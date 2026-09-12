@@ -6,10 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "routesyncmobile",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
+
     "ios": {
       "icon": "./assets/expo.icon"
     },
+
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -19,21 +21,43 @@
       },
       "predictiveBackGestureEnabled": false
     },
+
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+
     "plugins": [
       "expo-router",
+
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RouteSync uses your location to show nearby buses and real-time transport information."
+        }
+      ],
+
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "RouteSync uses your camera to capture profile and transport-related images."
+        }
+      ],
+
+      "expo-notifications",
+      "expo-image",
+      "expo-web-browser"
     ],
+
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

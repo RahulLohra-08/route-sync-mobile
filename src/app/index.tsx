@@ -1,98 +1,93 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, StyleSheet, View } from "react-native";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import Screen from "@/components/common/Screen";
+import AppText from "@/components/common/AppText";
+import AnimatedButton from "@/components/common/AnimatedButton";
+import AnimatedCard from "@/components/common/AnimatedCard";
+import Badge from "@/components/common/Badge";
+import Header from "@/components/common/Header";
+import AppInput from "@/components/inputs/AppInput";
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+import {
+  colors,
+  spacing,
+} from "@/theme";
+
+export default function Index() {
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <Screen scroll>
+      <Header
+        title="RouteSync"
+        subtitle="Smart public transport"
+      />
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+      <View style={styles.content}>
+        <AppText variant="display">
+          Welcome 👋
+        </AppText>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        <AppText
+          variant="body"
+          style={styles.description}
+        >
+          Everything you need to travel smarter.
+        </AppText>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+        <AppInput
+          label="Search"
+          placeholder="Search bus or route"
+        />
+
+        <AnimatedCard>
+          <AppText variant="h3">
+            Bus RS-102
+          </AppText>
+
+          <AppText
+            variant="body"
+            style={styles.cardText}
+          >
+            Ranchi → Hatia
+          </AppText>
+
+          <Badge
+            label="Live"
+            variant="success"
           />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+        </AnimatedCard>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        <AnimatedButton
+          title="Explore Buses"
+          onPress={() =>
+            Alert.alert(
+              "RouteSync",
+              "Bus exploration coming next."
+            )
+          }
+          style={styles.button}
+        />
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+  content: {
+    marginTop: spacing.xl,
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+
+  description: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.xxl,
+    color: colors.text.secondary,
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+
+  cardText: {
+    marginVertical: spacing.sm,
+    color: colors.text.secondary,
   },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+
+  button: {
+    marginTop: spacing.xl,
   },
 });

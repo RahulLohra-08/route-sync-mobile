@@ -1,18 +1,42 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router";
+import { Stack } from "expo-router";
+import { useEffect, useState } from "react";
 import * as SplashScreen from "expo-splash-screen";
-import { useColorScheme } from "react-native";
 
-import { AnimatedSplashOverlay } from "@/components/animated-icon";
-import AppTabs from "@/components/app-tabs";
+import RouteSyncSplash from "@/components/common/RouteSyncSplash";
+import { initializeApplication } from "@/services/app/app-initializer";
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Splash screen may already be prevented from hiding.
+});
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+export default function RootLayout() {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const prepare = async () => {
+      try {
+        await initializeApplication();
+      } catch (error) {
+        console.error("RouteSync initialization failed:", error);
+      } finally {
+        setIsReady(true);
+
+        await SplashScreen.hideAsync();
+      }
+    };
+
+    prepare();
+  }, []);
+
+  if (!isReady) {
+    return <RouteSyncSplash />;
+  }
+
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    />
   );
 }
