@@ -5,6 +5,7 @@ import type {
   VerifyOtpRequest,
   AuthTokens,
   AuthUser,
+  AuthResponse,
 } from "@/features/auth/auth.types";
 
 export async function sendOtp(
@@ -20,8 +21,8 @@ export async function sendOtp(
 
 export async function verifyOtp(
   request: VerifyOtpRequest
-): Promise<AuthTokens> {
-  const response = await apiClient.post<AuthTokens>(
+): Promise<AuthResponse> {
+  const response = await apiClient.post<AuthResponse>(
     "/api/v1/auth/otp/verify",
     request
   );
@@ -31,7 +32,7 @@ export async function verifyOtp(
 
 export async function getCurrentUser(): Promise<AuthUser> {
   const response = await apiClient.get<AuthUser>(
-    "/api/v1/auth/me"
+    "/api/v1/users/me"
   );
 
   return response.data;

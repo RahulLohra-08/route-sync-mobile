@@ -1,25 +1,19 @@
-import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  View,
-} from "react-native";
 import { router } from "expo-router";
+import { useState } from "react";
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 
-import Screen from "@/components/common/Screen";
-import AppText from "@/components/common/AppText";
 import AnimatedButton from "@/components/common/AnimatedButton";
+import AppText from "@/components/common/AppText";
+import Screen from "@/components/common/Screen";
 import AppInput from "@/components/inputs/AppInput";
 import { Alert } from "react-native";
-
-import { sendOtp } from "@/services/auth/auth.service";
 
 import {
   normalizePhoneNumber,
   validatePhoneNumber,
 } from "@/features/auth/auth.validation";
 
+import { sendOtp } from "@/services/auth/auth.service";
 import { colors, radius, spacing } from "@/theme";
 
 export default function LoginScreen() {
@@ -27,39 +21,47 @@ export default function LoginScreen() {
   const [error, setError] = useState<string>();
 
   const handleContinue = async () => {
-  const validationError =
-    validatePhoneNumber(phoneNumber);
+    const validationError = validatePhoneNumber(phoneNumber);
 
-  if (validationError) {
-    setError(validationError);
-    return;
-  }
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
-  setError(undefined);
+    setError(undefined);
 
-  try {
-    const normalizedPhone =
-      normalizePhoneNumber(phoneNumber);
+    try {
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
-    await sendOtp({
-      phoneNumber: normalizedPhone,
-    });
-
-    router.push({
-      pathname: "/(auth)/otp",
-      params: {
+      await sendOtp({
         phoneNumber: normalizedPhone,
-      },
-    });
-  } catch (error) {
-    console.error("Send OTP failed:", error);
+        purpose: "LOGIN",
+      });
 
-    Alert.alert(
-      "Unable to send OTP",
-      "Something went wrong. Please try again."
-    );
-  }
-};
+      router.push({
+        pathname: "/(auth)/otp",
+        params: {
+          phoneNumber: normalizedPhone,
+        },
+      });
+    } catch (error: any) {
+      console.error("Send OTP failed:", error);
+
+      const status = error?.response?.status;
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Something went wrong.";
+
+      console.error("Status:", status);
+      console.error("Backend message:", message);
+
+      Alert.alert(
+        `Unable to send OTP${status ? ` (${status})` : ""}`,
+        message
+      );
+    }
+  };
 
   return (
     <Screen scroll>
@@ -81,9 +83,7 @@ export default function LoginScreen() {
 
           <View style={styles.phoneCard}>
             <View style={styles.countryCode}>
-              <AppText variant="bodyMedium">
-                +91
-              </AppText>
+              <AppText variant="bodyMedium">+91</AppText>
             </View>
 
             <View style={styles.phoneInput}>
@@ -111,8 +111,7 @@ export default function LoginScreen() {
           />
 
           <AppText variant="caption" style={styles.privacy}>
-            By continuing, you agree to RouteSync's terms
-            and privacy policy.
+            By continuing, you agree to RouteSync's terms and privacy policy.
           </AppText>
         </View>
       </KeyboardAvoidingView>

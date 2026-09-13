@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
-import { useEffect, useState } from "react";
 import * as SplashScreen from "expo-splash-screen";
+import { useEffect, useState } from "react";
 import { Provider } from "react-redux";
 
 import { store } from "@/store";
@@ -20,14 +20,9 @@ export default function RootLayout() {
 
         await initializeApplication();
 
-        console.log(
-          "RouteSync initialization completed."
-        );
+        console.log("RouteSync initialization completed.");
       } catch (error) {
-        console.error(
-          "RouteSync initialization failed:",
-          error
-        );
+        console.error("RouteSync initialization failed:", error);
       } finally {
         setIsReady(true);
         await SplashScreen.hideAsync();
@@ -46,6 +41,7 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
+          animation: "slide_from_right",
         }}
       />
     </Provider>

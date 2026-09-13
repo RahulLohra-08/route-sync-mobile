@@ -11,19 +11,13 @@ import { validateOtp } from "@/features/auth/auth.validation";
 import { colors, spacing } from "@/theme";
 import { Alert } from "react-native";
 
-import {
-  verifyOtp,
-  getCurrentUser,
-} from "@/services/auth/auth.service";
+import { getCurrentUser, verifyOtp } from "@/services/auth/auth.service";
 
 import { saveTokens } from "@/services/auth/token.service";
 
-import {
-  setUser,
-} from "@/features/auth/auth.slice";
+import { setUser } from "@/features/auth/auth.slice";
 
 import { useAppDispatch } from "@/store/hooks";
-
 
 export default function OtpScreen() {
   const dispatch = useAppDispatch();
@@ -48,15 +42,24 @@ export default function OtpScreen() {
     try {
       const normalizedOtp = otp.replace(/\D/g, "");
 
+      // router.push({
+      //   pathname: "/(auth)/(permissions)/location",
+      // });
+
       const tokens = await verifyOtp({
         phoneNumber: phoneNumber ?? "",
         otp: normalizedOtp,
+        fullName: "Rahul-dev"
       });
 
       await saveTokens(
         tokens.accessToken,
         tokens.refreshToken
       );
+
+      await saveTokens(tokens.accessToken, tokens.refreshToken);
+
+      console.log("Tokens saved successfully");
 
       const user = await getCurrentUser();
 
@@ -74,17 +77,14 @@ export default function OtpScreen() {
 
       Alert.alert(
         "Access unavailable",
-        "Admin accounts use the RouteSync web dashboard."
+        "Admin accounts use the RouteSync web dashboard.",
       );
     } catch (error) {
-      console.error(
-        "OTP verification failed:",
-        error
-      );
+      console.error("OTP verification failed:", error);
 
       Alert.alert(
         "Verification failed",
-        "The OTP could not be verified. Please try again."
+        "The OTP could not be verified. Please try again.",
       );
     }
   };
