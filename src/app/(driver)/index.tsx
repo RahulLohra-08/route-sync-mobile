@@ -1,14 +1,16 @@
-import { StyleSheet, Text, View } from 'react-native'
-import React from 'react'
+import Screen from "@/components/common/Screen";
+import AppText from "@/components/common/AppText";
 
-const index = () => {
+export default function DriverHome() {
   return (
-    <View>
-      <Text>index</Text>
-    </View>
-  )
+    <Screen>
+      <AppText variant="h1">
+        Driver Dashboard
+      </AppText>
+
+      <AppText variant="body">
+        Welcome to RouteSync Driver.
+      </AppText>
+    </Screen>
+  );
 }
-
-export default index
-
-const styles = StyleSheet.create({})

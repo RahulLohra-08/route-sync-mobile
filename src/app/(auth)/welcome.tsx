@@ -1,9 +1,9 @@
-import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
+import { router } from "expo-router";
 
-import AnimatedButton from "@/components/common/AnimatedButton";
-import AppText from "@/components/common/AppText";
 import Screen from "@/components/common/Screen";
+import AppText from "@/components/common/AppText";
+import AnimatedButton from "@/components/common/AnimatedButton";
 import { colors, spacing } from "@/theme";
 
 export default function WelcomeScreen() {
@@ -32,7 +32,10 @@ export default function WelcomeScreen() {
 
         <View style={styles.spacer} />
 
-        <AnimatedButton title="Get Started" onPress={handleGetStarted} />
+        <AnimatedButton
+          title="Get Started"
+          onPress={handleGetStarted}
+        />
 
         <AppText variant="caption" style={styles.footer}>
           Track • Understand • Predict • Recommend

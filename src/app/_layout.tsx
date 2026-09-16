@@ -1,29 +1,33 @@
 import { Stack } from "expo-router";
-import { useEffect, useState } from "react";
 import * as SplashScreen from "expo-splash-screen";
+import { useEffect, useState } from "react";
+import { Provider } from "react-redux";
+
+import { store } from "@/store";
 
 import RouteSyncSplash from "@/components/common/RouteSyncSplash";
 import { initializeApplication } from "@/services/app/app-initializer";
 
-SplashScreen.preventAutoHideAsync().catch(() => {
-  // Splash screen may already be prevented from hiding.
-});
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const prepare = async () => {
+    async function prepare() {
       try {
+        console.log("Initializing RouteSync...");
+
         await initializeApplication();
+
+        console.log("RouteSync initialization completed.");
       } catch (error) {
         console.error("RouteSync initialization failed:", error);
       } finally {
         setIsReady(true);
-
         await SplashScreen.hideAsync();
       }
-    };
+    }
 
     prepare();
   }, []);
@@ -33,10 +37,13 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-      }}
-    />
+    <Provider store={store}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: "slide_from_right",
+        }}
+      />
+    </Provider>
   );
 }

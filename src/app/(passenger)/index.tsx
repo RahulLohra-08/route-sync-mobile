@@ -1,14 +1,16 @@
-import { StyleSheet, Text, View } from 'react-native'
-import React from 'react'
+import Screen from "@/components/common/Screen";
+import AppText from "@/components/common/AppText";
 
-const index = () => {
+export default function PassengerHome() {
   return (
-    <View>
-      <Text>index</Text>
-    </View>
-  )
+    <Screen>
+      <AppText variant="h1">
+        Passenger Home
+      </AppText>
+
+      <AppText variant="body">
+        Welcome to RouteSync.
+      </AppText>
+    </Screen>
+  );
 }
-
-export default index
-
-const styles = StyleSheet.create({})
