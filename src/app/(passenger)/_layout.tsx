@@ -5,7 +5,7 @@ export default function PassengerLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-      }}
-    />
+       }}
+  />
   );
 }
