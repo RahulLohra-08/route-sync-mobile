@@ -1,26 +1,25 @@
+// src/features/auth/auth.types.ts
+
+export type UserRole =
+  | "PASSENGER"
+  | "DRIVER"
+  | "ADMIN";
+
+export type OtpPurpose =
+  | "LOGIN"
+  | "REGISTRATION"
+  | "PASSWORD_RESET";
+
 export interface SendOtpRequest {
-  phoneNumber: string;
-  purpose?: "LOGIN" | "REGISTER" | "RESET_PASSWORD";
+  email: string;
+  purpose: OtpPurpose;
 }
 
 export interface VerifyOtpRequest {
-  phoneNumber: string;
+  email: string;
   otp: string;
-  fullName: string;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export interface AuthUser {
-  id: string;
-  fullName: string;
-  email?: string;
-  phoneNumber?: string;
-  role: "PASSENGER" | "DRIVER" | "ADMIN";
-  active: boolean;
+  purpose: OtpPurpose;
+  fullName?: string;
 }
 
 export interface AuthResponse {
@@ -28,17 +27,33 @@ export interface AuthResponse {
   refreshToken: string;
 
   userId: string;
+
   fullName: string;
   email: string | null;
-  phoneNumber: string;
+  phoneNumber: string | null;
   profileImage: string | null;
 
-  role: "PASSENGER" | "DRIVER" | "ADMIN";
+  role: UserRole;
   active: boolean;
 
   authProvider: string;
+
   tokenType: string;
   expiresIn: number;
 
   message: string;
+}
+
+export interface AuthUser {
+  id: string;
+  fullName: string;
+
+  email: string | null;
+  phoneNumber: string | null;
+  profileImage: string | null;
+
+  role: UserRole;
+  active: boolean;
+
+  authProvider: string;
 }

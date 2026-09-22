@@ -29,3 +29,24 @@ export function validateOtp(value: string): string | undefined {
 
   return undefined;
 }
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function validateEmail(email: string): string | undefined {
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return "Email address is required.";
+  }
+
+  const emailRegex =
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailRegex.test(normalizedEmail)) {
+    return "Please enter a valid email address.";
+  }
+
+  return undefined;
+}

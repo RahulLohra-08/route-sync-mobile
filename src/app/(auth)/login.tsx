@@ -1,27 +1,39 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import AnimatedButton from "@/components/common/AnimatedButton";
 import AppText from "@/components/common/AppText";
 import Screen from "@/components/common/Screen";
 import AppInput from "@/components/inputs/AppInput";
-import { Alert } from "react-native";
 
 import {
-  normalizePhoneNumber,
-  validatePhoneNumber,
+  normalizeEmail,
+  validateEmail,
 } from "@/features/auth/auth.validation";
 
 import { sendOtp } from "@/services/auth/auth.service";
-import { colors, radius, spacing } from "@/theme";
+
+import {
+  colors,
+  radius,
+  spacing,
+} from "@/theme";
 
 export default function LoginScreen() {
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState<string>();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleContinue = async () => {
-    const validationError = validatePhoneNumber(phoneNumber);
+    const validationError = validateEmail(email);
 
     if (validationError) {
       setError(validationError);
@@ -29,90 +41,116 @@ export default function LoginScreen() {
     }
 
     setError(undefined);
+    setIsLoading(true);
 
     try {
-      const normalizedPhone = normalizePhoneNumber(phoneNumber);
+      const normalizedEmail = normalizeEmail(email);
+
+      console.log(
+        "Sending login OTP to:",
+        normalizedEmail
+      );
 
       await sendOtp({
-        phoneNumber: normalizedPhone,
+        email: normalizedEmail,
         purpose: "LOGIN",
       });
+
+      console.log("OTP sent successfully");
 
       router.push({
         pathname: "/(auth)/otp",
         params: {
-          phoneNumber: normalizedPhone,
+          email: normalizedEmail,
         },
       });
     } catch (error: any) {
-      console.error("Send OTP failed:", error);
+      console.error(
+        "Send OTP failed:",
+        error
+      );
 
-      const status = error?.response?.status;
+      const status =
+        error?.response?.status;
+
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        "Something went wrong.";
-
-      console.error("Status:", status);
-      console.error("Backend message:", message);
+        "Unable to send OTP. Please try again.";
 
       Alert.alert(
-        `Unable to send OTP${status ? ` (${status})` : ""}`,
+        `Unable to send OTP${
+          status ? ` (${status})` : ""
+        }`,
         message
       );
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <Screen scroll>
+    <Screen>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboard}
+        behavior={
+          Platform.OS === "ios"
+            ? "padding"
+            : undefined
+        }
       >
         <View style={styles.container}>
-          <View style={styles.iconContainer}>
-            <AppText variant="h1">📱</AppText>
+
+          <View style={styles.header}>
+            <AppText variant="h1">
+              Welcome back
+            </AppText>
+
+            <AppText
+              variant="body"
+              style={styles.subtitle}
+            >
+              Enter your email address to
+              continue with RouteSync.
+            </AppText>
           </View>
 
-          <AppText variant="h1" style={styles.title}>
-            Welcome back
-          </AppText>
+          <View style={styles.form}>
 
-          <AppText variant="body" style={styles.description}>
-            Enter your mobile number to continue with RouteSync.
-          </AppText>
+            <AppInput
+              label="Email address"
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={(value) => {
+                setEmail(value);
+                setError(undefined);
+              }}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              error={error}
+            />
 
-          <View style={styles.phoneCard}>
-            <View style={styles.countryCode}>
-              <AppText variant="bodyMedium">+91</AppText>
-            </View>
+            <AnimatedButton
+              title={
+                isLoading
+                  ? "Sending OTP..."
+                  : "Continue"
+              }
+              onPress={handleContinue}
+              disabled={isLoading}
+            />
 
-            <View style={styles.phoneInput}>
-              <AppInput
-                label="Mobile number"
-                placeholder="9876543210"
-                keyboardType="phone-pad"
-                maxLength={10}
-                value={phoneNumber}
-                onChangeText={(value) => {
-                  setPhoneNumber(value.replace(/\D/g, ""));
-                  if (error) {
-                    setError(undefined);
-                  }
-                }}
-                error={error}
-              />
-            </View>
+            <AppText
+              variant="caption"
+              style={styles.info}
+            >
+              We will send a 6-digit OTP to
+              your email address.
+            </AppText>
+
           </View>
 
-          <AnimatedButton
-            title="Continue"
-            onPress={handleContinue}
-            style={styles.button}
-          />
-
-          <AppText variant="caption" style={styles.privacy}>
-            By continuing, you agree to RouteSync's terms and privacy policy.
-          </AppText>
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -120,59 +158,32 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingTop: spacing.huge,
-    paddingBottom: spacing.xxxl,
-  },
-
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.lg,
-    backgroundColor: colors.primary[50],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  title: {
-    marginTop: spacing.xl,
-  },
-
-  description: {
-    marginTop: spacing.sm,
-    color: colors.text.secondary,
-    lineHeight: 25,
-  },
-
-  phoneCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: spacing.xxxl,
-  },
-
-  countryCode: {
-    height: 52,
-    paddingHorizontal: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-    borderRadius: radius.lg,
-    backgroundColor: colors.background.secondary,
-    justifyContent: "center",
-    marginRight: spacing.sm,
-  },
-
-  phoneInput: {
+  keyboard: {
     flex: 1,
   },
 
-  button: {
-    marginTop: spacing.md,
+  container: {
+    flex: 1,
+    paddingHorizontal: spacing.xl,
+    justifyContent: "center",
   },
 
-  privacy: {
+  header: {
+    marginBottom: spacing.xxxl,
+  },
+
+  subtitle: {
+    marginTop: spacing.sm,
+    color: colors.text.secondary,
+  },
+
+  form: {
+    gap: spacing.lg,
+  },
+
+  info: {
     textAlign: "center",
     color: colors.text.muted,
-    marginTop: spacing.xl,
-    lineHeight: 20,
+    marginTop: spacing.sm,
   },
 });
