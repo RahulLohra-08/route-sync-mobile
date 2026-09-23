@@ -1,6 +1,12 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+  TouchableOpacity,
+} from "react-native";
 
 import AnimatedButton from "@/components/common/AnimatedButton";
 import AppText from "@/components/common/AppText";
@@ -19,6 +25,10 @@ import { colors, radius, spacing } from "@/theme";
 export default function LoginScreen() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [error, setError] = useState<string>();
+
+    const handleSkip = () => {
+    router.replace("/(passenger)");
+  };
 
   const handleContinue = async () => {
     const validationError = validatePhoneNumber(phoneNumber);
@@ -69,6 +79,14 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.container}>
+          <TouchableOpacity
+  style={styles.skipButton}
+  onPress={handleSkip}
+>
+  <AppText variant="bodyMedium" style={styles.skipText}>
+    Skip
+  </AppText>
+</TouchableOpacity>
           <View style={styles.iconContainer}>
             <AppText variant="h1">📱</AppText>
           </View>
@@ -175,4 +193,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     lineHeight: 20,
   },
+  skipButton: {
+  alignSelf: "flex-end",
+  paddingVertical: spacing.sm,
+  paddingHorizontal: spacing.sm,
+},
+
+skipText: {
+  color: colors.primary[700],
+},
 });
