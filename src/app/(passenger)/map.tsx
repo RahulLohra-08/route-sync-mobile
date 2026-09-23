@@ -13,6 +13,7 @@ import {
 } from "@maplibre/maplibre-react-native";
 
 import RouteCard from "@/components/cards/RouteCard";
+import BottomNavigation from "@/components/common/BottomNavigation";
 
 console.log(
   "MapTiler key exists:",
@@ -135,6 +136,7 @@ export default function MapScreen() {
   </View>
 </Marker>
       </Map>
+      <BottomNavigation/>
     </View>
   );
 }

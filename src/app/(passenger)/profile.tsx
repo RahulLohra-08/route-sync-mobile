@@ -28,6 +28,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import BottomNavigation from "@/components/common/BottomNavigation";
 
 const BLUE = "#208AEF";
 
@@ -127,7 +128,7 @@ export default function ProfileScreen() {
         />
 
       </ScrollView>
-
+      <BottomNavigation/>
     </View>
   );
 }

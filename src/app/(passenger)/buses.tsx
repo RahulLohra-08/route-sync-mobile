@@ -26,6 +26,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import ETACard from "@/components/cards/ETACard";
+import BottomNavigation from "@/components/common/BottomNavigation";
 
 const BLUE = "#208AEF";
 
@@ -195,7 +196,7 @@ export default function LiveBusesScreen() {
         ))}
 
       </ScrollView>
-
+        <BottomNavigation/>
     </View>
   );
 }

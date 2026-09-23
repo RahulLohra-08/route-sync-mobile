@@ -1,15 +1,12 @@
 import { Redirect } from "expo-router";
 
 export default function Index() {
-  return <Redirect href="/(passenger)" />;
+  return <Redirect href="/(auth)/welcome" />;
 }
-
-
-
 
 // import React from "react";
 // import {
-//   View,   
+//   View,
 //   Text,
 //   StyleSheet,
 //   TouchableOpacity,
@@ -998,7 +995,6 @@ export default function Index() {
 //     fontWeight: "600",
 //   },
 // });
-
 
 // // import React from "react";
 // // import { View, Text } from "react-native";
