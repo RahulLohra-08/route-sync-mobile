@@ -1,40 +1,24 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import {
-  Alert,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 
 import AnimatedButton from "@/components/common/AnimatedButton";
 import AppText from "@/components/common/AppText";
 import Screen from "@/components/common/Screen";
 import AppInput from "@/components/inputs/AppInput";
 
-import {
-  normalizeEmail,
-  validateOtp,
-} from "@/features/auth/auth.validation";
+import { normalizeEmail, validateOtp } from "@/features/auth/auth.validation";
 
-import {
-  getCurrentUser,
-  verifyOtp,
-} from "@/services/auth/auth.service";
+import { getCurrentUser, verifyOtp } from "@/services/auth/auth.service";
 
-import {
-  saveTokens,
-} from "@/services/auth/token.service";
+import { saveTokens } from "@/services/auth/token.service";
 
-import {
-  colors,
-  spacing,
-} from "@/theme";
+import { colors, spacing } from "@/theme";
 
 export default function OtpScreen() {
-  const params =
-    useLocalSearchParams<{
-      email?: string;
-    }>();
+  const params = useLocalSearchParams<{
+    email?: string;
+  }>();
 
   const email = params.email ?? "";
 
@@ -43,8 +27,7 @@ export default function OtpScreen() {
   const [error, setError] = useState<string>();
 
   const handleVerify = async () => {
-    const validationError =
-      validateOtp(otp);
+    const validationError = validateOtp(otp);
 
     if (validationError) {
       setError(validationError);
@@ -52,10 +35,7 @@ export default function OtpScreen() {
     }
 
     if (!email) {
-      Alert.alert(
-        "Error",
-        "Email address is missing."
-      );
+      Alert.alert("Error", "Email address is missing.");
       return;
     }
 
@@ -63,41 +43,29 @@ export default function OtpScreen() {
     setIsLoading(true);
 
     try {
-      const normalizedEmail =
-        normalizeEmail(email);
+      const normalizedEmail = normalizeEmail(email);
 
-      console.log(
-        "Verifying OTP for:",
-        normalizedEmail
-      );
+      console.log("Verifying OTP for:", normalizedEmail);
 
       /*
        * STEP 1
        * Verify OTP
        */
-      const authResponse =
-        await verifyOtp({
-          email: normalizedEmail,
-          otp: otp.trim(),
-          purpose: "LOGIN",
-        });
+      const authResponse = await verifyOtp({
+        email: normalizedEmail,
+        otp: otp.trim(),
+        purpose: "LOGIN",
+      });
 
-      console.log(
-        "OTP verification successful"
-      );
+      console.log("OTP verification successful");
 
       /*
        * STEP 2
        * Save JWT tokens
        */
-      await saveTokens(
-        authResponse.accessToken,
-        authResponse.refreshToken
-      );
+      await saveTokens(authResponse.accessToken, authResponse.refreshToken);
 
-      console.log(
-        "Tokens saved successfully"
-      );
+      console.log("Tokens saved successfully");
 
       /*
        * STEP 3
@@ -105,22 +73,19 @@ export default function OtpScreen() {
        */
       const user = await getCurrentUser();
 
-      console.log(
-        "Current user:",
-        user
-      );
+      console.log("Current user:", user);
 
       /*
        * STEP 4
        * Role based navigation
        */
       if (user.role === "PASSENGER") {
-        router.replace("/(passenger)");
+        router.replace("/(passenger)/(tabs)");
         return;
       }
 
       if (user.role === "DRIVER") {
-        router.replace("/(driver)");
+        router.replace("/(driver)/(tabs)");
         return;
       }
 
@@ -130,23 +95,16 @@ export default function OtpScreen() {
       if (user.role === "ADMIN") {
         Alert.alert(
           "Admin Account",
-          "Please use the RouteSync Admin Dashboard."
+          "Please use the RouteSync Admin Dashboard.",
         );
         return;
       }
 
-      throw new Error(
-        "Unknown user role."
-      );
-
+      throw new Error("Unknown user role.");
     } catch (error: any) {
-      console.error(
-        "OTP verification failed:",
-        error
-      );
+      console.error("OTP verification failed:", error);
 
-      const status =
-        error?.response?.status;
+      const status = error?.response?.status;
 
       const message =
         error?.response?.data?.message ||
@@ -154,10 +112,8 @@ export default function OtpScreen() {
         "OTP verification failed.";
 
       Alert.alert(
-        `Verification Failed${
-          status ? ` (${status})` : ""
-        }`,
-        message
+        `Verification Failed${status ? ` (${status})` : ""}`,
+        message,
       );
     } finally {
       setIsLoading(false);
@@ -167,38 +123,25 @@ export default function OtpScreen() {
   return (
     <Screen>
       <View style={styles.container}>
-
         <View style={styles.header}>
-          <AppText variant="h1">
-            Verify your email
-          </AppText>
+          <AppText variant="h1">Verify your email</AppText>
 
-          <AppText
-            variant="body"
-            style={styles.subtitle}
-          >
+          <AppText variant="body" style={styles.subtitle}>
             Enter the 6-digit OTP sent to
           </AppText>
 
-          <AppText
-            variant="bodyMedium"
-            style={styles.email}
-          >
+          <AppText variant="bodyMedium" style={styles.email}>
             {email}
           </AppText>
         </View>
 
         <View style={styles.form}>
-
           <AppInput
             label="OTP"
             placeholder="000000"
             value={otp}
             onChangeText={(value) => {
-              const cleaned =
-                value
-                  .replace(/\D/g, "")
-                  .slice(0, 6);
+              const cleaned = value.replace(/\D/g, "").slice(0, 6);
 
               setOtp(cleaned);
               setError(undefined);
@@ -209,20 +152,11 @@ export default function OtpScreen() {
           />
 
           <AnimatedButton
-            title={
-              isLoading
-                ? "Verifying..."
-                : "Verify OTP"
-            }
+            title={isLoading ? "Verifying..." : "Verify OTP"}
             onPress={handleVerify}
-            disabled={
-              isLoading ||
-              otp.length !== 6
-            }
+            disabled={isLoading || otp.length !== 6}
           />
-
         </View>
-
       </View>
     </Screen>
   );

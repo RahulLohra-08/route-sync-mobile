@@ -1,30 +1,105 @@
+import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 
 import Screen from "@/components/common/Screen";
 import AppText from "@/components/common/AppText";
 import AnimatedButton from "@/components/common/AnimatedButton";
+
 import { colors, spacing } from "@/theme";
+import { useAppSelector } from "@/store/hooks";
 
 export default function WelcomeScreen() {
+  const {
+    user,
+    isAuthenticated,
+    isInitialized,
+  } = useAppSelector((state) => state.auth);
+
+  useEffect(() => {
+    // Don't make any navigation decision
+    // until authentication restoration finishes.
+    if (!isInitialized) {
+      return;
+    }
+
+    // -----------------------------------------
+    // Authenticated user
+    // -----------------------------------------
+
+    if (isAuthenticated && user) {
+      switch (user.role) {
+        case "PASSENGER":
+          router.replace("/(passenger)/(tabs)");
+          break;
+
+        case "DRIVER":
+          router.replace("/(driver)/(tabs)");
+          break;
+
+        case "ADMIN":
+          // Mobile app should normally not handle ADMIN.
+          // Change this route if you later add admin mobile.
+          router.replace("/(passenger)/(tabs)");
+          break;
+
+        default:
+          break;
+      }
+    }
+  }, [
+    isInitialized,
+    isAuthenticated,
+    user,
+  ]);
+
   const handleGetStarted = () => {
     router.push("/(auth)/login");
   };
+
+  // -----------------------------------------
+  // Authentication restoration
+  // -----------------------------------------
+
+  if (!isInitialized) {
+    return null;
+  }
+
+  // -----------------------------------------
+  // Authenticated user
+  // -----------------------------------------
+
+  if (isAuthenticated && user) {
+    return null;
+  }
+
+  // -----------------------------------------
+  // Unauthenticated user
+  // -----------------------------------------
 
   return (
     <Screen>
       <View style={styles.container}>
         <View style={styles.logoContainer}>
-          <AppText variant="display" style={styles.logo}>
+          <AppText
+            variant="display"
+            style={styles.logo}
+          >
             🚌
           </AppText>
         </View>
 
-        <AppText variant="display" style={styles.title}>
+        <AppText
+          variant="display"
+          style={styles.title}
+        >
           RouteSync
         </AppText>
 
-        <AppText variant="body" style={styles.subtitle}>
+        <AppText
+          variant="body"
+          style={styles.subtitle}
+        >
           Smart public transport,
           {"\n"}
           connected in real time.
@@ -37,7 +112,10 @@ export default function WelcomeScreen() {
           onPress={handleGetStarted}
         />
 
-        <AppText variant="caption" style={styles.footer}>
+        <AppText
+          variant="caption"
+          style={styles.footer}
+        >
           Track • Understand • Predict • Recommend
         </AppText>
       </View>
