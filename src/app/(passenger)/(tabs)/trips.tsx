@@ -1,14 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native'
 import React from 'react'
 
-const buses = () => {
+const TripsScreen = () => {
   return (
     <View>
-      <Text>buses</Text>
+      <Text>Trips</Text>
     </View>
   )
 }
 
-export default buses
+export default TripsScreen
 
 const styles = StyleSheet.create({})
