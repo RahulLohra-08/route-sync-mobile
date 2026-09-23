@@ -20,14 +20,9 @@ export default function RootLayout() {
 
         await initializeApplication();
 
-        console.log(
-          "RouteSync initialization completed."
-        );
+        console.log("RouteSync initialization completed.");
       } catch (error) {
-        console.error(
-          "RouteSync initialization failed:",
-          error
-        );
+        console.error("RouteSync initialization failed:", error);
       } finally {
         setIsReady(true);
 

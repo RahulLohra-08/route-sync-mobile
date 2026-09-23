@@ -1,23 +1,38 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  View,
+} from "react-native";
 
 import AppText from "@/components/common/AppText";
 import Screen from "@/components/common/Screen";
+import { useAppSelector } from "@/store/hooks";
 import { colors } from "@/theme/colors";
 
 export default function PassengerHomeScreen() {
+  const { user } = useAppSelector((state) => state.auth);
+
+  console.log("users=======> ", user);
+
   return (
     <Screen>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.container}
       >
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor={colors.primary[500]}
+        />
         {/* Header */}
         <View style={styles.header}>
           <View>
             <AppText variant="body" style={styles.eyebrow}>
-              Good morning 👋
+              Good morning, {user?.fullName}! 👋
             </AppText>
 
             <AppText variant="h1" style={styles.title}>
