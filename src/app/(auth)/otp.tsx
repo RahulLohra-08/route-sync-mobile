@@ -103,8 +103,7 @@ export default function OtpScreen() {
        * STEP 3
        * Fetch authenticated user
        */
-      const user =
-        await getCurrentUser();
+      const user = await getCurrentUser();
 
       console.log(
         "Current user:",

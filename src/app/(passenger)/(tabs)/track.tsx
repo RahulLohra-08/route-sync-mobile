@@ -1,14 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native'
 import React from 'react'
 
-const location = () => {
+const Track = () => {
   return (
     <View>
-      <Text>location</Text>
+      <Text>Track</Text>
     </View>
   )
 }
 
-export default location
+export default Track
 
 const styles = StyleSheet.create({})
