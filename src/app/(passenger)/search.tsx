@@ -1,18 +1,18 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Pressable,
-    StyleSheet,
-    TextInput,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
 } from "react-native";
 
 import { colors } from "@/theme/colors";
 
 import AppText from "@/components/common/AppText";
-import { searchRoutes } from "@/features/passenger/passenger.api";
+import { passengerApi } from "@/features/passenger/passenger.api";
 import type { RouteResponse } from "@/features/passenger/passenger.types";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -36,7 +36,7 @@ export default function PassengerSearchScreen() {
         setLoading(true);
         setError(null);
 
-        const result = await searchRoutes(trimmedQuery);
+        const result = await passengerApi.searchRoutes(trimmedQuery);
 
         setRoutes(result);
       } catch (err) {

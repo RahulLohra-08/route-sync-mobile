@@ -1,78 +1,31 @@
-import {apiClient} from "@/services/api/api-client";
+import { apiClient } from "@/services/api/api-client";
 
 import type {
+  BusResponse,
   RouteResponse,
   StopResponse,
   TripResponse,
-} from "./passenger.types";
+} from './passenger.types';
 
-export async function getActiveRoutes(): Promise<RouteResponse[]> {
-  const response = await apiClient.get<RouteResponse[]>(
-    "/api/v1/routes/active"
-  );
+export const passengerApi = {
+  getAvailableTrips: async () =>
+    (await apiClient.get<TripResponse[]>('/api/v1/passenger/trips')).data,
 
-  return response.data;
-}
+  getTripById: async (tripId: string) =>
+    (await apiClient.get<TripResponse>(`/api/v1/passenger/trips/${tripId}`)).data,
 
-export async function searchRoutes(
-  routeName: string
-): Promise<RouteResponse[]> {
-  const response = await apiClient.get<RouteResponse[]>(
-    "/api/v1/routes/search",
-    {
-      params: {
-        routeName,
-      },
-    }
-  );
+  getTripsByRoute: async (routeId: string) =>
+    (await apiClient.get<TripResponse[]>(`/api/v1/passenger/trips/route/${routeId}`)).data,
 
-  return response.data;
-}
+  getActiveRoutes: async () =>
+    (await apiClient.get<RouteResponse[]>('/api/v1/routes/active')).data,
 
-export async function getRouteById(
-  routeId: string
-): Promise<RouteResponse> {
-  const response = await apiClient.get<RouteResponse>(
-    `/api/v1/routes/${routeId}`
-  );
+  searchRoutes: async (routeName?: string) =>
+    (await apiClient.get<RouteResponse[]>('/api/v1/routes/search', { params: { routeName } })).data,
 
-  return response.data;
-}
+  getRouteStops: async (routeId: string) =>
+    (await apiClient.get<StopResponse[]>(`/api/v1/routes/${routeId}/stops/active`)).data,
 
-export async function getActiveRouteStops(
-  routeId: string
-): Promise<StopResponse[]> {
-  const response = await apiClient.get<StopResponse[]>(
-    `/api/v1/routes/${routeId}/stops/active`
-  );
-
-  return response.data;
-}
-
-export async function getAvailableTrips(): Promise<TripResponse[]> {
-  const response = await apiClient.get<TripResponse[]>(
-    "/api/v1/passenger/trips"
-  );
-
-  return response.data;
-}
-
-export async function getTripsByRoute(
-  routeId: string
-): Promise<TripResponse[]> {
-  const response = await apiClient.get<TripResponse[]>(
-    `/api/v1/passenger/trips/route/${routeId}`
-  );
-
-  return response.data;
-}
-
-export async function getTripById(
-  tripId: string
-): Promise<TripResponse> {
-  const response = await apiClient.get<TripResponse>(
-    `/api/v1/passenger/trips/${tripId}`
-  );
-
-  return response.data;
-}
+  getBusById: async (busId: string) =>
+    (await apiClient.get<BusResponse>(`/api/v1/buses/${busId}`)).data,
+};
