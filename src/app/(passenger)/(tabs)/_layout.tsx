@@ -1,5 +1,5 @@
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function PassengerTabsLayout() {
   return (
@@ -54,11 +54,7 @@ export default function PassengerTabsLayout() {
         options={{
           title: "Alerts",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons
-              name="notifications-outline"
-              size={size}
-              color={color}
-            />
+            <Ionicons name="notifications-outline" size={size} color={color} />
           ),
         }}
       />
@@ -67,6 +63,15 @@ export default function PassengerTabsLayout() {
         name="profile"
         options={{
           title: "Profile",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="Test"
+        options={{
+          title: "Test",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
