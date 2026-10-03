@@ -17,6 +17,7 @@ import {
   type TripFilter,
 } from "@/features/passenger/usePassengerDashboard";
 import { useNow } from "@/hooks/useNow";
+import { stompClient } from "@/services/websocket/stomp-client";
 import { useAppSelector } from "@/store/hooks";
 import { palette } from "@/theme/passenger";
 import { router, type Href } from "expo-router";
@@ -24,7 +25,6 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { stompClient } from "../../../services/websocket/stomp-client";
 
 const go = (href: string) => router.push(href as Href);
 
@@ -102,14 +102,7 @@ export default function PassengerDashboardScreen() {
   const showError = !loading && error && trips.length === 0;
 
   useEffect(() => {
-    stompClient.connect(
-      () => {
-        console.log("🎉 STOMP CONNECTION SUCCESS");
-      },
-      (error) => {
-        console.error("STOMP CONNECTION FAILED:", error);
-      },
-    );
+    stompClient.connect();
 
     return () => {
       stompClient.disconnect();

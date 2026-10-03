@@ -1,3 +1,4 @@
+import { ENV } from "@/config/env";
 import { getAccessToken } from "../auth/token.service";
 
 /**
@@ -32,9 +33,8 @@ function encodeStompFrame(frame: string): Uint8Array {
 
 
 export async function testRawWebSocket() {
-  const ws = new WebSocket(
-    "ws://10.227.179.202:5000/ws"
-  );
+  console.log("[RAW WS] Connecting to:", ENV.WS_URL);
+  const ws = new WebSocket(ENV.WS_URL);
 
   const token = await getAccessToken();
     
