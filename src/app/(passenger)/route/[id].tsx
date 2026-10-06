@@ -1,14 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native'
 import React from 'react'
 
-const index = () => {
+const RoutePage = () => {
   return (
     <View>
-      <Text>index</Text>
+      <Text>RoutePage</Text>
     </View>
   )
 }
 
-export default index
+export default RoutePage
 
 const styles = StyleSheet.create({})

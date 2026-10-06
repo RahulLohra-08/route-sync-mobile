@@ -9,6 +9,7 @@ import { spacing } from "@/theme";
 export default function LocationPermissionScreen() {
   const handleAllow = async () => {
     try {
+      
       const result = await requestForegroundLocationPermission();
 
       if (result.status === "granted") {

@@ -1,3 +1,4 @@
+// theme/animation.ts
 export const animation = {
   duration: {
     fast: 150,
