@@ -82,16 +82,25 @@ export function useTripTracking({
         });
     }
 
-    const unsubscribeConnection = stompClient.onConnectionChange((connected) => {
-      if (cancelled) return;
+    const unsubscribeConnection = stompClient.onConnectionChange(
+      (connected) => {
 
-      const next: TrackingConnectionStatus = connected
-        ? "connected"
-        : "disconnected";
+          if (cancelled) return;
 
-      setStatus(next);
-      dispatch(setConnectionStatus(next));
-    });
+          if (connected) {
+            setStatus("connected");
+            setError(null);
+
+            dispatch(setConnectionStatus("connected"));
+
+            return;
+          }
+
+          setStatus("disconnected");
+
+          dispatch(setConnectionStatus("disconnected"));
+        }
+      );
 
     const unsubscribeError = stompClient.onError((message) => {
       if (cancelled) return;
