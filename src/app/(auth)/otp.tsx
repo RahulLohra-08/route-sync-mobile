@@ -78,8 +78,6 @@ export default function OtpScreen() {
       // Always sanitize before sending
       const cleanCode = code.replace(/\D/g, "").slice(0, OTP_LENGTH);
 
-      console.log("OTP verification started:", cleanCode);
-
       if (cleanCode.length !== OTP_LENGTH || isVerifying) {
         return;
       }
@@ -89,18 +87,11 @@ export default function OtpScreen() {
       setErrorMessage(undefined);
 
       try {
-        console.log("Sending OTP verification:", {
-          email,
-          otpLength: cleanCode.length,
-        });
-
         const authResponse = await verifyOtp({
           email,
           otp: cleanCode,
           purpose: "LOGIN",
         });
-
-        console.log("OTP verification successful:", authResponse);
 
         // TODO:
         // Save accessToken / refreshToken
@@ -115,19 +106,13 @@ export default function OtpScreen() {
          */
         await saveTokens(authResponse.accessToken, authResponse.refreshToken);
 
-        console.log("Tokens saved successfully");
-
         /*
          * STEP 3
          * Fetch authenticated user
          */
         const user = await getCurrentUser();
 
-        console.log("Current user:", user);
-
         store.dispatch(setUser(user));
-
-        console.log("set Current user into redux:");
 
         /*
          * STEP 4

@@ -1,351 +1,194 @@
-import { useEffect, useMemo, useState } from "react";
-
-import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
-
-import MapView, { Marker, Region } from "react-native-maps";
-
-import AnimatedButton from "@/components/common/AnimatedButton";
 import AppText from "@/components/common/AppText";
 import Screen from "@/components/common/Screen";
-import { StatusBadge } from "@/components/common/StatusBadge";
+import { EmptyState } from "@/components/feedback/EmptyState";
+import { useDriverSession } from "@/features/driver/DriverSessionProvider";
+import { DriverTripCard } from "@/features/driver/components/DriverTripCard";
+import { GpsStatusCard } from "@/features/driver/components/GpsStatusCard";
+import { passengerApi } from "@/features/passenger/passenger.api";
+import type { StopResponse } from "@/features/passenger/passenger.types";
+import { useNow } from "@/hooks/useNow";
+import { colors, radius, spacing } from "@/theme";
+import { useEffect, useState } from "react";
+import {
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
-import { driverApi } from "@/features/driver/driver.api";
-
-import type { DriverTripResponse } from "@/features/driver/driver.types";
-
-import { TripStatus } from "@/features/passenger/passenger.enums";
-
-import { useDriverLocationBroadcaster } from "@/features/tracking/hooks/useDriverLocationBroadcaster";
-
-import { colors, spacing } from "@/theme";
-
-const DEFAULT_REGION: Region = {
-  latitude: 23.3441,
-
-  longitude: 85.3096,
-
-  latitudeDelta: 0.08,
-
-  longitudeDelta: 0.08,
-};
-
-export default function DriverTripScreen() {
-  const [trips, setTrips] = useState<DriverTripResponse[]>([]);
-
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-
-  const [loading, setLoading] = useState(true);
-
-  const [error, setError] = useState<string | null>(null);
-
-  const selectedTrip = useMemo(
-    () => trips.find((trip) => trip.id === selectedTripId) ?? null,
-    [trips, selectedTripId],
-  );
-
-  const isTracking = selectedTrip?.status === TripStatus.IN_PROGRESS;
-
-  const { isBroadcasting, lastSentAt, lastTransport, lastError, lastLocation } =
-    useDriverLocationBroadcaster({
-      tripId: selectedTripId,
-      enabled: isTracking,
-    });
-
-  // =========================================================
-  // LOAD DRIVER TRIPS
-  // =========================================================
-
-  const loadTrips = async () => {
-    try {
-      setLoading(true);
-
-      setError(null);
-
-      const data = await driverApi.getMyTrips();
-
-      setTrips(data);
-
-      /*
-       * Agar already running trip hai to
-       * automatically select karenge.
-       */
-      const activeTrip = data.find(
-        (trip) => trip.status === TripStatus.IN_PROGRESS,
-      );
-
-      const firstUsableTrip =
-        activeTrip ??
-        data.find(
-          (trip) =>
-            trip.status === TripStatus.SCHEDULED ||
-            trip.status === TripStatus.BOARDING,
-        );
-
-      if (firstUsableTrip) {
-        setSelectedTripId(firstUsableTrip.id);
-      }
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to load driver trips",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+/** Active (or next) trip in detail: GPS health, own position, route stops, queue. */
+export default function DriverTrip() {
+  const s = useDriverSession();
+  const now = useNow(5_000);
+  const trip = s.activeTrip ?? s.nextTrip;
+  const [stops, setStops] = useState<StopResponse[] | null>(null);
 
   useEffect(() => {
-    loadTrips();
-  }, []);
+    if (!trip) return;
+    let cancelled = false;
+    // GET /api/v1/routes/{id}/stops/active is open to any authenticated role.
+    passengerApi
+      .getRouteStops(trip.routeId)
+      .then(
+        (d) =>
+          !cancelled &&
+          setStops([...d].sort((a, b) => a.stopOrder - b.stopOrder)),
+      )
+      .catch(() => !cancelled && setStops([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [trip?.routeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // =========================================================
-  // START TRIP
-  // =========================================================
-
-  const handleStartTrip = async () => {
-    if (!selectedTripId) {
-      return;
-    }
-
-    try {
-      const updated = await driverApi.startTrip(selectedTripId);
-
-      setTrips((current) =>
-        current.map((trip) => (trip.id === updated.id ? updated : trip)),
-      );
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to start trip",
-      );
-    }
-  };
-
-  // =========================================================
-  // COMPLETE TRIP
-  // =========================================================
-
-  const handleCompleteTrip = async () => {
-    if (!selectedTripId) {
-      return;
-    }
-
-    try {
-      const updated = await driverApi.completeTrip(selectedTripId);
-
-      setTrips((current) =>
-        current.map((trip) => (trip.id === updated.id ? updated : trip)),
-      );
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to complete trip",
-      );
-    }
-  };
-
-  if (loading) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <ActivityIndicator />
-
-          <AppText>Loading trips...</AppText>
-        </View>
-      </Screen>
-    );
-  }
+  const fix = s.gps.lastFix;
+  const others = s.upcoming.filter((t) => t.id !== trip?.id);
 
   return (
     <Screen>
-      <AppText variant="h1" style={styles.title}>
-        Driver Trip
-      </AppText>
-
-      {error && <AppText style={styles.error}>{error}</AppText>}
-
-      {trips.length === 0 ? (
-        <View style={styles.center}>
-          <AppText>No assigned trips found.</AppText>
-        </View>
-      ) : (
-        <>
-          <FlatList
-            data={trips}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tripList}
-            renderItem={({ item }) => (
-              <View
-                style={[
-                  styles.tripCard,
-                  item.id === selectedTripId && styles.selectedCard,
-                ]}
-              >
-                <AppText variant="h2">{item.busNumber}</AppText>
-
-                <AppText>{item.routeCode}</AppText>
-
-                <AppText>{item.routeName}</AppText>
-
-                <StatusBadge status={item.status} />
-
-                <AnimatedButton
-                  title={
-                    item.id === selectedTripId ? "Selected" : "Select Trip"
-                  }
-                  onPress={() => setSelectedTripId(item.id)}
-                  style={styles.selectButton}
-                />
-              </View>
-            )}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={s.refreshing} onRefresh={s.refresh} />
+        }
+      >
+        <AppText variant="h1">Trip</AppText>
+        {!trip ? (
+          <EmptyState
+            icon="bus-outline"
+            title="No active or upcoming trip"
+            message="Trips assigned to you will appear here."
           />
+        ) : (
+          <>
+            <DriverTripCard trip={trip} />
+            {s.actionError && (
+              <AppText
+                variant="bodyMedium"
+                style={styles.error}
+                accessibilityRole="alert"
+              >
+                {s.actionError}
+              </AppText>
+            )}
+            <GpsStatusCard
+              gps={s.gps}
+              tripRunning={!!s.activeTrip}
+              now={now.getTime()}
+            />
 
-          {selectedTrip && (
-            <View style={styles.content}>
-              <View style={styles.infoCard}>
-                <AppText variant="h2">{selectedTrip.busNumber}</AppText>
-
-                <AppText>{selectedTrip.routeName}</AppText>
-
-                <AppText>Status: {selectedTrip.status}</AppText>
-
-                {selectedTrip.status === TripStatus.SCHEDULED ||
-                selectedTrip.status === TripStatus.BOARDING ? (
-                  <AnimatedButton
-                    title="Start Trip"
-                    onPress={handleStartTrip}
-                  />
-                ) : null}
-
-                {selectedTrip.status === TripStatus.IN_PROGRESS && (
-                  <AnimatedButton
-                    title="Complete Trip"
-                    onPress={handleCompleteTrip}
-                  />
-                )}
-              </View>
-
-              <View style={styles.liveCard}>
-                <AppText variant="h2">GPS Broadcasting</AppText>
-
-                <AppText>{isBroadcasting ? "LIVE" : "NOT ACTIVE"}</AppText>
-
-                <AppText>Transport: {lastTransport ?? "Waiting"}</AppText>
-
-                <AppText>
-                  Last sent:{" "}
-                  {lastSentAt ? lastSentAt.toLocaleTimeString() : "Never"}
-                </AppText>
-
-                {lastError && (
-                  <AppText style={styles.error}>{lastError}</AppText>
-                )}
-              </View>
-
-              <View style={styles.mapWrapper}>
+            {s.activeTrip && (
+              <View style={styles.map}>
                 <MapView
                   style={StyleSheet.absoluteFill}
-                  initialRegion={
-                    lastLocation
-                      ? {
-                          latitude: lastLocation.coords.latitude,
-
-                          longitude: lastLocation.coords.longitude,
-
-                          latitudeDelta: 0.02,
-
-                          longitudeDelta: 0.02,
-                        }
-                      : DEFAULT_REGION
+                  provider={
+                    Platform.OS === "android" ? PROVIDER_GOOGLE : undefined
                   }
+                  region={
+                    fix
+                      ? {
+                          latitude: fix.coords.latitude,
+                          longitude: fix.coords.longitude,
+                          latitudeDelta: 0.01,
+                          longitudeDelta: 0.01,
+                        }
+                      : undefined
+                  }
+                  initialRegion={{
+                    latitude: 22.9734,
+                    longitude: 78.6569,
+                    latitudeDelta: 12,
+                    longitudeDelta: 12,
+                  }}
                 >
-                  {lastLocation && (
+                  {fix && (
                     <Marker
                       coordinate={{
-                        latitude: lastLocation.coords.latitude,
-
-                        longitude: lastLocation.coords.longitude,
+                        latitude: fix.coords.latitude,
+                        longitude: fix.coords.longitude,
                       }}
-                      title="Your current location"
+                      title="Your position"
                     />
                   )}
                 </MapView>
+                {!fix && (
+                  <View style={styles.mapNote}>
+                    <AppText variant="caption">
+                      Waiting for your first GPS fix...
+                    </AppText>
+                  </View>
+                )}
               </View>
-            </View>
-          )}
-        </>
-      )}
+            )}
+
+            <AppText variant="h3">Route stops</AppText>
+            {stops === null ? (
+              <AppText variant="caption" style={styles.muted}>
+                Loading stops...
+              </AppText>
+            ) : stops.length === 0 ? (
+              <AppText variant="caption" style={styles.muted}>
+                No stops published for this route.
+              </AppText>
+            ) : (
+              stops.map((st) => (
+                <View key={st.id} style={styles.stop}>
+                  <View style={styles.dot}>
+                    <AppText variant="caption" style={styles.dotText}>
+                      {st.stopOrder}
+                    </AppText>
+                  </View>
+                  <AppText variant="bodyMedium" style={{ flex: 1 }}>
+                    {st.stopName}
+                  </AppText>
+                </View>
+              ))
+            )}
+
+            {others.length > 0 && (
+              <>
+                <AppText variant="h3">Later trips</AppText>
+                {others.map((t) => (
+                  <DriverTripCard key={t.id} trip={t} />
+                ))}
+              </>
+            )}
+          </>
+        )}
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  title: {
-    marginBottom: spacing.lg,
+  content: { gap: spacing.lg, paddingBottom: spacing.xxxl },
+  error: { color: colors.status.error },
+  muted: { color: "#64748B" },
+  map: {
+    height: 220,
+    borderRadius: radius.xl,
+    overflow: "hidden",
+    backgroundColor: colors.background.tertiary,
   },
-
-  center: {
-    flex: 1,
+  mapNote: {
+    position: "absolute",
+    bottom: 10,
+    alignSelf: "center",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  stop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  dot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary[50],
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
   },
-
-  error: {
-    color: colors.status.error,
-    marginBottom: spacing.sm,
-  },
-
-  tripList: {
-    gap: spacing.md,
-    paddingBottom: spacing.md,
-  },
-
-  tripCard: {
-    width: 220,
-    padding: spacing.md,
-    borderRadius: 16,
-    backgroundColor: colors.background.secondary,
-    gap: spacing.xs,
-  },
-
-  selectedCard: {
-    borderWidth: 2,
-    borderColor: colors.map.bus,
-  },
-
-  selectButton: {
-    marginTop: spacing.sm,
-  },
-
-  content: {
-    flex: 1,
-    gap: spacing.md,
-  },
-
-  infoCard: {
-    padding: spacing.md,
-    borderRadius: 16,
-    backgroundColor: colors.background.secondary,
-    gap: spacing.sm,
-  },
-
-  liveCard: {
-    padding: spacing.md,
-    borderRadius: 16,
-    backgroundColor: colors.background.secondary,
-    gap: spacing.xs,
-  },
-
-  mapWrapper: {
-    flex: 1,
-    minHeight: 260,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
+  dotText: { color: colors.primary[700], fontWeight: "700" },
 });

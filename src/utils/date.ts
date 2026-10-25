@@ -43,7 +43,11 @@ export interface TripEta {
   overdue: boolean;
 }
 
-/** Live trips count down to arrival; everything else counts down to departure. */
+/**
+ * SCHEDULE-based countdown (from scheduledStart/EndTime). This is NOT a live
+ * ETA: real arrival estimates come only from GET .../trips/{id}/eta and are
+ * shown in the tracking view. Captions say "scheduled" so nobody mistakes it.
+ */
 export const getTripEta = (trip: TripResponse, now: Date): TripEta => {
   const live = trip.status === 'IN_PROGRESS';
   const target = parseLocal(live ? trip.scheduledEndTime : trip.scheduledStartTime);
@@ -52,13 +56,13 @@ export const getTripEta = (trip: TripResponse, now: Date): TripEta => {
   const mins = Math.round((target.getTime() - now.getTime()) / 60_000);
   if (mins <= 0) {
     return {
-      value: live ? 'Due' : 'Now',
+      value: live ? '--' : 'Now',
       unit: '',
-      caption: live ? 'Arriving shortly' : trip.status === 'BOARDING' ? 'Boarding now' : 'Leaving any moment',
+      caption: live ? 'Past scheduled arrival' : trip.status === 'BOARDING' ? 'Boarding now' : 'Scheduled departure passed',
       overdue: true,
     };
   }
-  const caption = live ? 'until arrival' : 'until departure';
+  const caption = live ? 'until scheduled arrival' : 'until scheduled departure';
   if (mins < 60) return { value: String(mins), unit: 'min', caption, overdue: false };
   if (mins < 1440) return { value: `${Math.floor(mins / 60)}h ${mins % 60}m`, unit: '', caption, overdue: false };
   return { value: `${Math.floor(mins / 1440)}d`, unit: '', caption, overdue: false };

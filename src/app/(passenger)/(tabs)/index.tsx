@@ -102,7 +102,7 @@ export default function PassengerDashboardScreen() {
   const showError = !loading && error && trips.length === 0;
 
   useEffect(() => {
-    stompClient.connect();
+    stompClient.isConnected();
 
     return () => {
       stompClient.disconnect();

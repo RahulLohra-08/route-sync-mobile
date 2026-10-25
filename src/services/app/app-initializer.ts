@@ -1,21 +1,28 @@
 import { store } from "@/store";
 
 import {
+  clearAuth,
   setInitialized,
   setLoading,
   setUser,
-  clearAuth,
 } from "@/features/auth/auth.slice";
 
+import { logout } from "@/services/auth/logout.service";
+import { registerSessionExpiredHandler } from "@/services/auth/token-refresh";
 import {
-  getAccessToken,
   clearTokens,
+  getAccessToken,
 } from "@/services/auth/token.service";
+import { router } from "expo-router";
 import { getCurrentUser } from "../auth/auth.service";
+
+// When the refresh token is rejected mid-session, drop to the login screen.
+registerSessionExpiredHandler(() => {
+  void logout().finally(() => router.replace("/(auth)/login"));
+});
 
 export async function initializeApplication(): Promise<void> {
   try {
-    console.log("Initializing RouteSync...");
 
     store.dispatch(setLoading(true));
 
@@ -25,16 +32,9 @@ export async function initializeApplication(): Promise<void> {
 
     const accessToken = await getAccessToken();
 
-    console.log(
-      "Stored access token exists:",
-      !!accessToken
-    );
 
     // No token → user is not logged in
     if (!accessToken) {
-      console.log(
-        "No access token. User is unauthenticated."
-      );
 
       store.dispatch(clearAuth());
       return;
@@ -45,15 +45,9 @@ export async function initializeApplication(): Promise<void> {
     // -----------------------------------------
 
     try {
-      console.log("Restoring authenticated session...");
 
       const user = await getCurrentUser();
 
-      console.log("Authenticated user:", {
-        id: user.id,
-        role: user.role,
-        fullName: user.fullName,
-      });
 
       // -----------------------------------------
       // 3. Store user in Redux
@@ -61,14 +55,8 @@ export async function initializeApplication(): Promise<void> {
 
       store.dispatch(setUser(user));
 
-      console.log(
-        "Authentication restored successfully."
-      );
     } catch (error) {
       // Token exists but backend rejected it
-      console.log(
-        "Stored token is invalid or expired."
-      );
 
       await clearTokens();
 
@@ -85,8 +73,5 @@ export async function initializeApplication(): Promise<void> {
     store.dispatch(setLoading(false));
     store.dispatch(setInitialized(true));
 
-    console.log(
-      "RouteSync application initialization completed."
-    );
   }
 }

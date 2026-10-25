@@ -1,157 +1,164 @@
-import { useEffect, useRef, useState } from "react";
-
+// src/features/tracking/hooks/useTripTracking.ts
+//
+// Passenger-side live tracking for ONE trip.
+//
+//  mount     : retain shared socket -> subscribe -> fetch REST snapshot
+//  reconnect : (stompClient epoch changes) -> re-fetch snapshot and reconcile;
+//              an older snapshot can never overwrite a newer live frame
+//  unmount   : unsubscribe + release (socket closes after the grace period)
+import { getApiErrorMessage } from "@/services/api/api-client";
 import { stompClient } from "@/services/websocket/stomp-client";
-import { useAppDispatch } from "@/store/hooks";
-
-import { getInitialTripSnapshot, trackingDestinations } from "../tracking.service";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
-  setConnectionStatus,
-  setTrackingError,
-  upsertLocation,
-} from "../tracking.slice";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  deriveHealth,
+  fixFromLive,
+  fixFromSnapshot,
+  getFreshness,
+} from "../tracking.logic";
+import { getTrackingSnapshot, trackingDestinations } from "../tracking.service";
+import { fixReceived } from "../tracking.slice";
 import type {
-  TrackingConnectionStatus,
+  ConnectionState,
+  LocationFix,
+  LocationFreshness,
+  TrackingHealth,
   TripLocationWebSocketMessage,
+  TripTrackingSnapshot,
 } from "../tracking.types";
 
-interface UseTripTrackingOptions {
-  tripId: string | null | undefined;
-  enabled?: boolean;
+/** Re-evaluate "live vs stale" without waiting for a new frame. */
+const FRESHNESS_TICK_MS = 5_000;
 
-  /** Called on every live location update (in addition to the Redux store). */
-  onLocationUpdate?: (location: TripLocationWebSocketMessage) => void;
-
-  /** Load the trip's last known position over REST before the socket
-   *  delivers its first live point. Defaults to true. */
-  loadInitialSnapshot?: boolean;
-}
-
-interface UseTripTrackingResult {
-  status: TrackingConnectionStatus;
+export interface TripTracking {
+  fix: LocationFix | null;
+  /** Trip metadata from the REST snapshot (status, bus number, route code). */
+  snapshot: TripTrackingSnapshot | null;
+  connection: ConnectionState;
+  freshness: LocationFreshness;
+  health: TrackingHealth;
+  /** First snapshot still loading. */
+  loading: boolean;
+  /** Human-readable problem (snapshot failure or transport error), if any. */
   error: string | null;
+  /** Re-fetch the snapshot now (pull-to-refresh). */
+  refresh: () => Promise<void>;
+  /** Restart the socket after a fatal error. */
+  reconnect: () => void;
 }
 
-/**
- * Subscribes a screen to a single trip's live location while it is
- * mounted. Safe to use from multiple screens/tabs at once (e.g. the
- * "Track" tab and a bus detail screen) - they share the same
- * underlying STOMP connection and each gets their own callback.
- */
-export function useTripTracking({
-  tripId,
+export function useTripTracking(
+  tripId: string | null | undefined,
   enabled = true,
-  onLocationUpdate,
-  loadInitialSnapshot = true,
-}: UseTripTrackingOptions): UseTripTrackingResult {
+): TripTracking {
   const dispatch = useAppDispatch();
+  const active = enabled && !!tripId;
 
-  const [status, setStatus] = useState<TrackingConnectionStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const connection = useSyncExternalStore(
+    stompClient.subscribeState,
+    stompClient.getState,
+  );
+  const epoch = useSyncExternalStore(
+    stompClient.subscribeState,
+    stompClient.getEpoch,
+  );
+  const fix = useAppSelector((s) =>
+    tripId ? (s.tracking.fixesByTripId[tripId] ?? null) : null,
+  );
 
-  // Keep the latest callback in a ref so effect re-subscription isn't
-  // triggered every time the caller passes a new inline function.
-  const onLocationUpdateRef = useRef(onLocationUpdate);
-  onLocationUpdateRef.current = onLocationUpdate;
+  const [snapshot, setSnapshot] = useState<TripTrackingSnapshot | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(active);
+  const [now, setNow] = useState(() => Date.now());
 
+  // Ignore responses from superseded requests (fast reconnects / trip switch).
+  const requestId = useRef(0);
+
+  const loadSnapshot = useCallback(async () => {
+    if (!tripId) return;
+    const myRequest = ++requestId.current;
+    try {
+      const data = await getTrackingSnapshot(tripId);
+      if (myRequest !== requestId.current) return;
+      setSnapshot(data);
+      setSnapshotError(null);
+      const snapshotFix = fixFromSnapshot(data, Date.now());
+      if (snapshotFix) dispatch(fixReceived(snapshotFix)); // reducer drops it if older
+    } catch (error) {
+      if (myRequest !== requestId.current) return;
+      setSnapshotError(getApiErrorMessage(error, "Could not load this trip."));
+    } finally {
+      if (myRequest === requestId.current) setLoading(false);
+    }
+  }, [tripId, dispatch]);
+
+  // 1) Socket + live subscription.
   useEffect(() => {
-    if (!enabled || !tripId) {
+    if (!active || !tripId) return;
+    const release = stompClient.retain();
+    const unsubscribe = stompClient.subscribe(
+      trackingDestinations.tripLocation(tripId),
+      (message) => {
+        try {
+          const payload = JSON.parse(message.body) as TripLocationWebSocketMessage;
+          if (payload.tripId !== tripId) return;
+          dispatch(fixReceived(fixFromLive(payload, Date.now())));
+        } catch {
+          // Malformed frame: drop it, keep the last good fix.
+        }
+      },
+    );
+    return () => {
+      unsubscribe();
+      release();
+    };
+  }, [active, tripId, dispatch]);
+
+  // 2) Snapshot on mount AND after every (re)connect. `epoch` bumps only after
+  //    the subscription is re-established, so there is no blind gap.
+  useEffect(() => {
+    if (!active) {
+      setLoading(false);
       return;
     }
+    setLoading(snapshot === null);
+    void loadSnapshot();
+    // `snapshot` intentionally omitted: it must not retrigger the fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, loadSnapshot, epoch]);
 
-    let cancelled = false;
-    const destination = trackingDestinations.tripLocation(tripId);
+  // 3) Freshness clock.
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), FRESHNESS_TICK_MS);
+    return () => clearInterval(id);
+  }, [active]);
 
-    setStatus("connecting");
-    dispatch(setConnectionStatus("connecting"));
+  const freshness = getFreshness(fix, now);
+  const health = deriveHealth({
+    connection,
+    freshness,
+    tripStatus: snapshot?.status,
+  });
 
-    if (loadInitialSnapshot) {
-      getInitialTripSnapshot(tripId)
-        .then((snapshot: any) => {
-          if (!cancelled && snapshot) {
-            dispatch(upsertLocation(snapshot));
-            onLocationUpdateRef.current?.(snapshot);
-          }
-        })
-        .catch((snapshotError: any) => {
-          // Non-fatal: the live subscription can still work even if
-          // this initial fetch fails (e.g. trip not started yet).
-          console.warn(
-            "[Tracking] Could not load initial trip snapshot:",
-            snapshotError
-          );
-        });
-    }
+  const transportError =
+    connection === "error" ? stompClient.getLastError() : null;
 
-    const unsubscribeConnection = stompClient.onConnectionChange(
-      (connected) => {
-
-          if (cancelled) return;
-
-          if (connected) {
-            setStatus("connected");
-            setError(null);
-
-            dispatch(setConnectionStatus("connected"));
-
-            return;
-          }
-
-          setStatus("disconnected");
-
-          dispatch(setConnectionStatus("disconnected"));
-        }
-      );
-
-    const unsubscribeError = stompClient.onError((message) => {
-      if (cancelled) return;
-
-      setStatus("error");
-      setError(message);
-      dispatch(setTrackingError(message));
-      dispatch(setConnectionStatus("error"));
-    });
-
-    stompClient
-      .connect()
-      .then(() => {
-        if (cancelled) return;
-
-        stompClient.subscribe(destination, (message) => {
-          try {
-            const location = JSON.parse(
-              message.body
-            ) as TripLocationWebSocketMessage;
-
-            dispatch(upsertLocation(location));
-            onLocationUpdateRef.current?.(location);
-          } catch (parseError) {
-            console.error(
-              "[Tracking] Failed to parse location message:",
-              parseError
-            );
-          }
-        });
-      })
-      .catch((connectError: Error) => {
-        if (cancelled) return;
-
-        setStatus("error");
-        setError(connectError.message);
-        dispatch(setTrackingError(connectError.message));
-        dispatch(setConnectionStatus("error"));
-      });
-
-    return () => {
-      cancelled = true;
-      unsubscribeConnection();
-      unsubscribeError();
-      stompClient.unsubscribe(destination);
-      // Intentionally NOT calling stompClient.disconnect() here: other
-      // screens (e.g. the Track tab) may still be using the shared
-      // connection. The connection is a long-lived, app-scoped
-      // resource; only this screen's subscription is torn down.
-    };
-  }, [tripId, enabled, loadInitialSnapshot, dispatch]);
-
-  return { status, error };
+  return {
+    fix,
+    snapshot,
+    connection,
+    freshness,
+    health,
+    loading,
+    error: transportError ?? snapshotError,
+    refresh: loadSnapshot,
+    reconnect: () => stompClient.retry(),
+  };
 }

@@ -1,64 +1,64 @@
+// src/services/api/api-client.ts
+import { ENV } from "@/config/env";
+import { refreshAccessToken } from "@/services/auth/token-refresh";
 import { getAccessToken } from "@/services/auth/token.service";
-import axios from "axios";
+import axios, { isAxiosError, type InternalAxiosRequestConfig } from "axios";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
-
-console.log("RouteSync API URL:", API_URL);
-
+/**
+ * Shared Axios instance.
+ *
+ * SECURITY: this file intentionally logs NOTHING about requests/responses.
+ * The previous version printed the Authorization header, request bodies (which
+ * include OTP codes) and response bodies (which include access/refresh tokens).
+ */
 export const apiClient = axios.create({
-  baseURL: API_URL,
-  timeout: 15000,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  baseURL: ENV.API_URL,
+  timeout: 15_000,
+  headers: { "Content-Type": "application/json" },
 });
 
-apiClient.interceptors.request.use(
-  async (config) => {
-    const token = await getAccessToken();
+apiClient.interceptors.request.use(async (config) => {
+  const token = await getAccessToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
-    console.log("Auth token exists:", !!token);
+type RetryableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
 
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-
-      console.log(
-        "Authorization header attached:",
-        config.headers.Authorization.substring(0, 30) + "..."
-      );
-    } else {
-      console.log("⚠️ No access token found");
-    }
-
-    console.log("API Request:", {
-      method: config.method,
-      url: `${config.baseURL}${config.url}`,
-      data: config.data,
-    });
-
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+// Auth endpoints return 401 for *wrong credentials/OTP* - that is not an
+// expired session, so never try to refresh for them.
+const isAuthEndpoint = (url?: string) => !!url && url.includes("/api/v1/auth/");
 
 apiClient.interceptors.response.use(
-  (response) => {
-    console.log("API Response:", {
-      status: response.status,
-      url: response.config.url,
-      data: response.data,
-    });
+  (response) => response,
+  async (error: unknown) => {
+    if (!isAxiosError(error) || !error.config) throw error;
 
-    return response;
+    const original = error.config as RetryableConfig;
+    if (
+      error.response?.status === 401 &&
+      !original._retried &&
+      !isAuthEndpoint(original.url)
+    ) {
+      original._retried = true;
+      // Throws on network failure (request fails normally); returns null when
+      // the session is over (handler already logged the user out).
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        original.headers.Authorization = `Bearer ${newToken}`;
+        return apiClient(original);
+      }
+    }
+    throw error;
   },
-  (error) => {
-    console.error("API Response Error:", {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-      url: error.config?.url,
-    });
-
-    return Promise.reject(error);
-  }
 );
+
+/** Backend ErrorResponse: { timestamp, status, error, message, path }. */
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (isAxiosError(error)) {
+    const data = error.response?.data as { message?: string } | undefined;
+    if (data?.message) return data.message;
+    if (!error.response) return "No internet connection. Please check your network.";
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}

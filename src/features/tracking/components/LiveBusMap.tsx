@@ -1,214 +1,205 @@
+// src/features/tracking/components/LiveBusMap.tsx
+//
+// Map-first live position of ONE bus.
+//  * Marker glides between fixes (AnimatedRegion) instead of teleporting.
+//  * Camera follows the bus until the user drags the map; then a Recenter
+//    button appears. We never fight a user who is exploring.
+//  * Marker colour mirrors data freshness (green live / amber stale).
+//  * Honors the OS "reduce motion" setting.
+import { colors, radius } from "@/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef } from "react";
-import { StyleSheet, View } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import { type ComponentProps, useEffect, useRef, useState } from "react";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import MapView, {
+  AnimatedRegion,
+  Circle,
+  Marker,
+  PROVIDER_GOOGLE,
+  type Region,
+} from "react-native-maps";
+import { useReducedMotion } from "react-native-reanimated";
+import type { LocationFix, TrackingHealth } from "../tracking.types";
 
-import AppText from "@/components/common/AppText";
-import { LiveDot } from "@/components/common/LiveDot";
-import { colors, radius, spacing } from "@/theme";
-
-import type {
-  TrackingConnectionStatus,
-  TripLocationWebSocketMessage,
-} from "../tracking.types";
-
-interface LiveBusMapProps {
-  location: TripLocationWebSocketMessage | null;
-  status: TrackingConnectionStatus;
-  /** Shown under the bus number, e.g. route name or driver name. */
-  subtitle?: string;
+interface Props {
+  fix: LocationFix | null;
+  health: TrackingHealth;
+  following: boolean;
+  onFollowingChange: (following: boolean) => void;
+  /** Height covered by the bottom sheet, so the map re-centres above it. */
+  bottomInset?: number;
 }
 
+// Neutral wide view of India until the first REAL fix arrives. No marker is
+// drawn without a fix: we never display an invented bus position.
 const FALLBACK_REGION: Region = {
-  // Roughly centers India as a neutral default until the first fix
-  // arrives; replace with your service area's default center.
   latitude: 22.9734,
   longitude: 78.6569,
-  latitudeDelta: 8,
-  longitudeDelta: 8,
+  latitudeDelta: 12,
+  longitudeDelta: 12,
 };
+const FOLLOW_ZOOM = 16;
+const MARKER_GLIDE_MS = 900;
+const CAMERA_MS = 600;
 
-function isStale(recordedAt: string, thresholdMs = 60_000) {
-  return Date.now() - new Date(recordedAt).getTime() > thresholdMs;
-}
-
-/**
- * Renders a single bus's live position on a map, plus a small status
- * header (connection state, staleness). Used by both the passenger
- * "Track" tab and the bus detail screen so the two stay visually
- * consistent and share bug fixes.
- */
-export function LiveBusMap({ location, status, subtitle }: LiveBusMapProps) {
+export function LiveBusMap({
+  fix,
+  health,
+  following,
+  onFollowingChange,
+  bottomInset = 0,
+}: Props) {
+  const reduceMotion = useReducedMotion();
   const mapRef = useRef<MapView | null>(null);
+  const animated = useRef(
+    new AnimatedRegion({
+      latitude: fix?.latitude ?? FALLBACK_REGION.latitude,
+      longitude: fix?.longitude ?? FALLBACK_REGION.longitude,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    }),
+  ).current;
+  const hadFix = useRef(!!fix);
+  const stale = health !== "live";
 
+  // Custom marker views must be tracked briefly after they change, then frozen
+  // (tracksViewChanges=false) so the map doesn't re-render them every frame.
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
   useEffect(() => {
-    if (!location) return;
+    setTracksViewChanges(true);
+    const id = setTimeout(() => setTracksViewChanges(false), 400);
+    return () => clearTimeout(id);
+  }, [stale]);
 
-    mapRef.current?.animateToRegion(
-      {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      },
-      600,
-    );
-  }, [location?.latitude, location?.longitude]);
+  // Move marker (+ camera when following) on every NEW coordinate.
+  useEffect(() => {
+    if (!fix) return;
+    const target = { latitude: fix.latitude, longitude: fix.longitude };
 
-  const stale = location ? isStale(location.recordedAt) : false;
+    if (!hadFix.current || reduceMotion) {
+      animated.setValue({ ...target, latitudeDelta: 0, longitudeDelta: 0 });
+    } else {
+      animated
+        .timing({
+          ...target,
+          latitudeDelta: 0,
+          longitudeDelta: 0,
+          duration: MARKER_GLIDE_MS,
+          useNativeDriver: false,
+          // react-native-maps' typings demand `toValue`, but its runtime
+          // overrides it per-axis from latitude/longitude. Unused, so 0.
+          toValue: 0,
+        })
+        .start();
+    }
+    hadFix.current = true;
+
+    if (following) {
+      mapRef.current?.animateCamera(
+        { center: target, zoom: FOLLOW_ZOOM },
+        { duration: reduceMotion ? 0 : CAMERA_MS },
+      );
+    }
+  }, [fix?.latitude, fix?.longitude, following, reduceMotion, animated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const markerColor = stale ? "#F59E0B" : colors.map.bus;
+  // Typing bridge: AnimatedRegion is the documented value for Marker.Animated,
+  // but the library's d.ts expects a plain LatLng-shaped object.
+  const animatedCoordinate = animated as unknown as ComponentProps<
+    typeof Marker.Animated
+  >["coordinate"];
 
   return (
-    <View style={styles.container}>
+    <View style={StyleSheet.absoluteFill}>
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
-        provider={PROVIDER_GOOGLE}
+        // Apple Maps needs no key on iOS; Google on Android needs the API key
+        // (see README "Maps configuration").
+        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         initialRegion={
-          location
+          fix
             ? {
-                latitude: location.latitude,
-                longitude: location.longitude,
-                latitudeDelta: 0.02,
-                longitudeDelta: 0.02,
+                latitude: fix.latitude,
+                longitude: fix.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
               }
             : FALLBACK_REGION
         }
+        mapPadding={{ top: 0, right: 0, bottom: bottomInset, left: 0 }}
+        toolbarEnabled={false}
+        showsCompass={false}
+        rotateEnabled={false}
+        // Any manual drag = the user is exploring; stop following.
+        onPanDrag={() => following && onFollowingChange(false)}
       >
-        {location && (
-          <Marker
-            coordinate={{
-              latitude: location.latitude,
-              longitude: location.longitude,
-            }}
-            title={location.busNumber}
-            description={location.routeCode}
-            rotation={location.heading ?? 0}
+        {fix &&
+          fix.accuracy != null &&
+          fix.accuracy > 0 &&
+          fix.accuracy < 200 && (
+            <Circle
+              center={{ latitude: fix.latitude, longitude: fix.longitude }}
+              radius={fix.accuracy}
+              strokeColor="transparent"
+              fillColor={
+                stale ? "rgba(245,158,11,0.12)" : "rgba(5,150,105,0.12)"
+              }
+            />
+          )}
+        {fix && (
+          <Marker.Animated
+            coordinate={animatedCoordinate}
             anchor={{ x: 0.5, y: 0.5 }}
             flat
+            rotation={fix.heading ?? 0}
+            tracksViewChanges={tracksViewChanges}
+            title={fix.busNumber ?? undefined}
+            description={fix.routeCode ?? undefined}
           >
-            <View style={[styles.busMarker, stale && styles.busMarkerStale]}>
+            <View style={[styles.marker, { backgroundColor: markerColor }]}>
               <Ionicons name="bus" size={18} color={colors.text.inverse} />
             </View>
-          </Marker>
+          </Marker.Animated>
         )}
       </MapView>
 
-      <View style={styles.statusCard}>
-        <View style={styles.statusRow}>
-          {status === "connected" && !stale ? (
-            <LiveDot color={colors.map.bus} size={7} />
-          ) : (
-            <Ionicons
-              name={status === "error" ? "warning-outline" : "time-outline"}
-              size={16}
-              color={colors.text.muted}
-            />
-          )}
-
-          <AppText variant="bodyMedium" style={styles.busNumber}>
-            {location?.busNumber ?? "Waiting for location..."}
-          </AppText>
-        </View>
-
-        {subtitle && (
-          <AppText variant="caption" style={styles.subtitle}>
-            {subtitle}
-          </AppText>
-        )}
-
-        <AppText variant="caption" style={styles.meta}>
-          {connectionLabel(status, stale, location)}
-        </AppText>
-      </View>
+      {fix && !following && (
+        <Pressable
+          onPress={() => onFollowingChange(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Recenter map on the bus"
+          style={[styles.recenter, { bottom: bottomInset + 16 }]}
+        >
+          <Ionicons name="locate" size={22} color={colors.primary[700]} />
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function connectionLabel(
-  status: TrackingConnectionStatus,
-  stale: boolean,
-  location: TripLocationWebSocketMessage | null,
-): string {
-  if (status === "connecting" || status === "idle") {
-    return "Connecting to live tracking...";
-  }
-
-  if (status === "error") {
-    return "Live tracking unavailable - retrying";
-  }
-
-  if (!location) {
-    return "No GPS data yet for this trip";
-  }
-
-  if (stale) {
-    return `Last seen ${new Date(location.recordedAt).toLocaleTimeString()} (signal may be lost)`;
-  }
-
-  const speedKmh =
-    location.speed != null ? Math.round(location.speed * 3.6) : null;
-
-  return speedKmh != null
-    ? `Live - ${speedKmh} km/h`
-    : `Live - updated ${new Date(location.recordedAt).toLocaleTimeString()}`;
-}
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: colors.background.tertiary,
-  },
-
-  busMarker: {
-    width: 32,
-    height: 32,
+  marker: {
+    width: 36,
+    height: 36,
     borderRadius: radius.pill,
-    backgroundColor: colors.map.bus,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: colors.background.primary,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
   },
-
-  busMarkerStale: {
-    backgroundColor: colors.text.muted,
-  },
-
-  statusCard: {
+  recenter: {
     position: "absolute",
-    top: spacing.lg,
-    left: spacing.lg,
-    right: spacing.lg,
-    backgroundColor: colors.background.primary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-
-  statusRow: {
-    flexDirection: "row",
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: radius.pill,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
-    gap: spacing.sm,
-  },
-
-  busNumber: {
-    color: colors.text.primary,
-  },
-
-  subtitle: {
-    color: colors.text.secondary,
-    marginTop: 2,
-  },
-
-  meta: {
-    color: colors.text.muted,
-    marginTop: 2,
+    justifyContent: "center",
+    elevation: 4,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
 });

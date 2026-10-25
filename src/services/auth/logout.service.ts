@@ -1,30 +1,31 @@
-
+// src/services/auth/logout.service.ts
+import { clearAuth } from "@/features/auth/auth.slice";
+import { resetTracking } from "@/features/tracking/tracking.slice";
+import { apiClient } from "@/services/api/api-client";
+import { clearTokens, getRefreshToken } from "@/services/auth/token.service";
+import { stompClient } from "@/services/websocket/stomp-client";
 import { store } from "@/store";
 
-import { clearAuth } from "@/features/auth/auth.slice";
-import { clearTokens } from "@/services/auth/token.service";
-
+/**
+ * Logs out locally FIRST (instant, works offline), then revokes the refresh
+ * token on the server on a best-effort basis (POST /api/v1/auth/logout).
+ */
 export async function logout(): Promise<void> {
-  try {
-    console.log("Logging out RouteSync user...");
+  const refreshToken = await getRefreshToken().catch(() => null);
 
-    // 1. Remove tokens from SecureStore
-    await clearTokens();
+  // 1. Tear down live connections so no GPS/location data outlives the session.
+  stompClient.disconnect();
 
-    // 2. Clear authentication state from Redux
-    store.dispatch(clearAuth());
+  // 2. Local session state.
+  await clearTokens().catch(() => undefined);
+  store.dispatch(resetTracking());
+  store.dispatch(clearAuth());
 
-    console.log("RouteSync logout completed.");
-  } catch (error) {
-    console.error(
-      "RouteSync logout failed:",
-      error
-    );
-
-    // Even if token deletion fails,
-    // clear Redux authentication state.
-    store.dispatch(clearAuth());
-
-    throw error;
+  // 3. Server-side revoke (ignore failures: tokens are already gone locally).
+  if (refreshToken) {
+    // Interceptor has no token now; endpoint is public under /api/v1/auth/**.
+    apiClient
+      .post("/api/v1/auth/logout", { refreshToken })
+      .catch(() => undefined);
   }
 }

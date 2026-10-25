@@ -23,6 +23,8 @@ export const passengerApi = {
   searchRoutes: async (routeName?: string) =>
     (await apiClient.get<RouteResponse[]>('/api/v1/routes/search', { params: { routeName } })).data,
 
+  getRouteById: async (routeId: string) =>
+    (await apiClient.get<RouteResponse>(`/api/v1/routes/${routeId}`)).data,
   getRouteStops: async (routeId: string) =>
     (await apiClient.get<StopResponse[]>(`/api/v1/routes/${routeId}/stops/active`)).data,
 

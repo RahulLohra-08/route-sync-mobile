@@ -11,7 +11,8 @@ interface Props {
   now: Date;
   unreadCount?: number;
   onSearchPress: () => void;
-  onBellPress: () => void;
+  /** Omit to hide the bell (no notification backend yet). */
+  onBellPress?: () => void;
 }
 
 export function DashboardHero({
@@ -36,15 +37,17 @@ export function DashboardHero({
           <Text style={styles.title}>Where to today?</Text>
         </View>
 
-        <PressableScale
-          onPress={onBellPress}
-          scaleTo={0.9}
-          style={styles.bell}
-          hitSlop={8}
-        >
-          <Ionicons name="notifications-outline" size={22} color="#fff" />
-          {unreadCount > 0 && <View style={styles.unread} />}
-        </PressableScale>
+        {onBellPress && (
+          <PressableScale
+            onPress={onBellPress}
+            scaleTo={0.9}
+            style={styles.bell}
+            hitSlop={8}
+          >
+            <Ionicons name="notifications-outline" size={22} color="#fff" />
+            {unreadCount > 0 && <View style={styles.unread} />}
+          </PressableScale>
+        )}
       </View>
 
       <PressableScale

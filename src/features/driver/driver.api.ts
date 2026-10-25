@@ -1,8 +1,8 @@
 import { apiClient } from "@/services/api/api-client";
 
 import type {
-  DriverTripResponse,
-  UpdateTripLocationRequest,
+    DriverTripResponse,
+    UpdateTripLocationRequest,
 } from "./driver.types";
 
 /**

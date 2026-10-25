@@ -1,5 +1,5 @@
-import { Alert, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
+import { Alert, StyleSheet, View } from "react-native";
 
 import Screen from "@/components/common/Screen";
 import PermissionCard from "@/components/permissions/PermissionCard";
@@ -9,25 +9,24 @@ import { spacing } from "@/theme";
 export default function LocationPermissionScreen() {
   const handleAllow = async () => {
     try {
-      
       const result = await requestForegroundLocationPermission();
 
       if (result.status === "granted") {
-        router.replace("/(passenger)");
+        router.replace("/(passenger)/(tabs)");
         return;
       }
 
       if (!result.canAskAgain) {
         Alert.alert(
           "Location permission required",
-          "Please enable location permission from your phone settings."
+          "Please enable location permission from your phone settings.",
         );
         return;
       }
 
       Alert.alert(
         "Location permission needed",
-        "RouteSync uses your location to show nearby buses and accurate arrival information."
+        "RouteSync uses your location to show nearby buses and accurate arrival information.",
       );
     } catch (error) {
       console.error("Location permission error:", error);

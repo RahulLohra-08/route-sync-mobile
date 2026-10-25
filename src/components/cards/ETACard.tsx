@@ -5,16 +5,16 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { ProgressBar } from "@/components/common/ProgressBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import type {
-    RouteResponse,
-    TripResponse,
+  RouteResponse,
+  TripResponse,
 } from "@/features/passenger/passenger.types";
 import { palette, raised } from "@/theme/passenger";
 import {
-    formatDayLabel,
-    formatTime,
-    getTripEta,
-    getTripProgress,
-    parseLocal,
+  formatDayLabel,
+  formatTime,
+  getTripEta,
+  getTripProgress,
+  parseLocal,
 } from "@/utils/date";
 import { PressableScale } from "../common/PressableScale";
 
@@ -40,7 +40,7 @@ export function ETACard({ trip, route, now, onPress }: Props) {
     trip.availableSeats ?? Math.max(0, trip.totalSeats - trip.currentOccupancy);
 
   const kicker = live
-    ? "Your bus is on the way"
+    ? "On the way · open to track live"
     : trip.status === "BOARDING"
       ? "Now boarding"
       : "Next departure";

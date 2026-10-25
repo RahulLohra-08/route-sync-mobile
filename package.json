@@ -40,6 +40,7 @@
     "react-redux": "^9.3.0"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   },
@@ -49,7 +50,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "private": true
 }

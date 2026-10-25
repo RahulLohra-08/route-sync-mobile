@@ -1,311 +1,277 @@
-import { useEffect, useRef, useState, } from "react";
-
-import * as Location from "expo-location";
-
-import { stompClient } from "@/services/websocket/stomp-client";
-
+// src/features/tracking/hooks/useDriverLocationBroadcaster.ts
+//
+// Driver GPS sharing for ONE trip.
+//
+// Backend contract (verified):
+//   STOMP SEND /app/trips/{tripId}/location   body = UpdateTripLocationRequest
+//   REST  PATCH /api/v1/driver/trips/{tripId}/location  (same service/validation)
+//   ack   /user/queue/location-ack  -> GPS point was PERSISTED
+//   error /user/queue/errors        -> rejected (validation, trip not IN_PROGRESS, ...)
+//
+// Rules this hook enforces:
+//  * "Sent" is not "confirmed". `lastConfirmedAt` only moves on a server ack
+//    (WS) or a 2xx response (REST). Never show success before that.
+//  * A server rejection stays visible until a LATER ack confirms recovery.
+//  * One watcher + one keep-alive timer; both are torn down on unmount/disable.
+//  * Foreground-only (project has no background-location config) - surfaced via
+//    `isForeground` so the UI can warn instead of silently going dark.
 import { driverApi } from "@/features/driver/driver.api";
-
+import { getApiErrorMessage } from "@/services/api/api-client";
+import {
+  checkForegroundLocationPermission,
+  requestForegroundLocationPermission,
+} from "@/services/permissions/location-permission";
+import { stompClient } from "@/services/websocket/stomp-client";
+import * as Location from "expo-location";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { AppState } from "react-native";
+import { buildGpsPayload } from "../tracking.logic";
 import { trackingDestinations } from "../tracking.service";
+import type { ConnectionState } from "../tracking.types";
 
-interface UseDriverLocationBroadcasterOptions {
+export type DriverGpsPermission =
+  | "unknown"
+  | "granted"
+  | "denied" // can still ask
+  | "blocked" // must open system settings
+  | "services-off"; // device location switched off
+
+export type DriverGpsPhase =
+  | "idle"
+  | "starting"
+  | "sharing"
+  | "permission-needed"
+  | "error";
+
+interface Options {
   tripId: string | null | undefined;
+  /** True only while the trip is IN_PROGRESS (backend rejects GPS otherwise). */
   enabled: boolean;
 }
 
-interface UseDriverLocationBroadcasterResult {
-
-  isBroadcasting: boolean;
-
-  lastSentAt: Date | null;
-
+export interface DriverLocationSharing {
+  phase: DriverGpsPhase;
+  permission: DriverGpsPermission;
+  connection: ConnectionState;
+  isForeground: boolean;
+  lastFix: Location.LocationObject | null;
+  /** Last time we handed a point to the transport. */
+  lastSentAt: number | null;
+  /** Last time the SERVER confirmed a point (ack / HTTP 2xx). */
+  lastConfirmedAt: number | null;
   lastTransport: "ws" | "rest" | null;
-
-  lastError: string | null;
-
-  lastLocation: Location.LocationObject | null;
+  /** Points were sent over WS but no ack arrived for too long. */
+  unconfirmed: boolean;
+  /** Latest server/transport rejection, cleared only by a later confirmation. */
+  problem: string | null;
+  requestPermission: () => Promise<DriverGpsPermission>;
 }
 
-const LOCATION_OPTIONS: Location.LocationOptions = {
-
+const WATCH_OPTIONS: Location.LocationOptions = {
   accuracy: Location.Accuracy.High,
-
-  timeInterval: 5000,
-
+  timeInterval: 5_000,
   distanceInterval: 10,
 };
+/** A parked bus produces no movement events; resend a REAL fix this often so
+ *  passengers don't see a healthy bus as stale (backend freshness = 30 s). */
+const KEEP_ALIVE_MS = 12_000;
+/** WS frames with no ack after this long are flagged "unconfirmed". */
+const ACK_TIMEOUT_MS = 12_000;
 
-export function useDriverLocationBroadcaster({ tripId, enabled } : UseDriverLocationBroadcasterOptions):UseDriverLocationBroadcasterResult {
+const toPermission = async (
+  request: boolean,
+): Promise<DriverGpsPermission> => {
+  if (!(await Location.hasServicesEnabledAsync())) return "services-off";
+  const res = request
+    ? await requestForegroundLocationPermission()
+    : await checkForegroundLocationPermission();
+  if (res.status === "granted") return "granted";
+  return res.canAskAgain ? "denied" : "blocked";
+};
 
-  const [ isBroadcasting, setIsBroadcasting] = useState(false);
+export function useDriverLocationBroadcaster({
+  tripId,
+  enabled,
+}: Options): DriverLocationSharing {
+  const connection = useSyncExternalStore(
+    stompClient.subscribeState,
+    stompClient.getState,
+  );
 
-  const [ lastSentAt, setLastSentAt] = useState<Date | null>(null);
+  const [phase, setPhase] = useState<DriverGpsPhase>("idle");
+  const [permission, setPermission] = useState<DriverGpsPermission>("unknown");
+  const [isForeground, setIsForeground] = useState(
+    AppState.currentState === "active",
+  );
+  const [lastFix, setLastFix] = useState<Location.LocationObject | null>(null);
+  const [lastSentAt, setLastSentAt] = useState<number | null>(null);
+  const [lastConfirmedAt, setLastConfirmedAt] = useState<number | null>(null);
+  const [lastTransport, setLastTransport] = useState<"ws" | "rest" | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [permissionTick, setPermissionTick] = useState(0);
 
-  const [lastTransport,setLastTransport] = useState<"ws" | "rest" | null>(null);
+  // Refs hold values read from long-lived callbacks (avoids stale closures).
+  const pendingAckSince = useRef<number | null>(null);
+  const restInFlight = useRef(false);
+  const lastFixAt = useRef(0);
 
-  const [ lastError, setLastError] = useState<string | null>(null);
-
-  const [ lastLocation, setLastLocation] = useState<Location.LocationObject | null>( null );
-
-  const watchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
-
-  /*
-   * Henglish:
-   *
-   * Agar previous REST request abhi pending hai,
-   * next GPS point ke saath parallel requests ka flood
-   * nahi karenge.
-   */
-  const sendingRef = useRef(false);
+  const requestPermission = useCallback(async () => {
+    const result = await toPermission(true);
+    setPermission(result);
+    setPermissionTick((n) => n + 1); // re-run the start effect
+    return result;
+  }, []);
 
   useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) =>
+      setIsForeground(s === "active"),
+    );
+    return () => sub.remove();
+  }, []);
 
+  useEffect(() => {
     if (!enabled || !tripId) {
-
-      setIsBroadcasting(false);
-
+      setPhase("idle");
+      setUnconfirmed(false);
+      pendingAckSince.current = null;
       return;
     }
 
     let cancelled = false;
+    let watcher: Location.LocationSubscription | null = null;
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
+    let ackWatchdog: ReturnType<typeof setInterval> | null = null;
+    const releaseSocket = stompClient.retain();
 
-    /*
-     * WebSocket ko background mein connect/reconnect
-     * hone denge.
-     */
-    stompClient
-      .connect()
-      .catch(error => {
+    const confirm = () => {
+      pendingAckSince.current = null;
+      setLastConfirmedAt(Date.now());
+      setUnconfirmed(false);
+      setProblem(null); // only a confirmation clears a rejection
+    };
+    const offAck = stompClient.onAck(() => {
+      if (!cancelled) confirm();
+    });
+    const offError = stompClient.onServerError((e) => {
+      if (!cancelled) setProblem(e.message || "Server rejected the GPS update");
+    });
 
-        console.warn(
-          "[DriverGPS] WebSocket unavailable:",
-          error.message
-        );
+    const send = async (location: Location.LocationObject) => {
+      if (cancelled) return;
+      lastFixAt.current = Date.now();
+      setLastFix(location);
 
-        /*
-         * REST fallback automatically available rahega.
-         */
+      const payload = buildGpsPayload({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        speed: location.coords.speed,
+        heading: location.coords.heading,
+        accuracy: location.coords.accuracy,
       });
+      if (!payload) {
+        setProblem("GPS returned an invalid position; waiting for a better fix.");
+        return;
+      }
 
-    const unsubscribeError =
-      stompClient.onError(
-        message => {
+      // Preferred path: the shared STOMP socket.
+      if (stompClient.publish(trackingDestinations.driverLocationPush(tripId), payload)) {
+        setLastSentAt(Date.now());
+        setLastTransport("ws");
+        pendingAckSince.current ??= Date.now();
+        return; // confirmation arrives via onAck
+      }
 
-          if (!cancelled) {
-
-            setLastError(message);
-          }
+      // Fallback: REST PATCH (same backend validation + broadcast).
+      if (restInFlight.current) return; // never stack requests while offline
+      restInFlight.current = true;
+      try {
+        setLastSentAt(Date.now());
+        setLastTransport("rest");
+        await driverApi.updateLocation(tripId, payload);
+        if (!cancelled) confirm();
+      } catch (error) {
+        if (!cancelled) {
+          setProblem(getApiErrorMessage(error, "Could not send location."));
         }
-      );
-
-    const sendLocation = async (location: Location.LocationObject) => {
-
-        if (cancelled) {
-          return;
-        }
-
-        /*
-         * Previous request pending hai to
-         * GPS queue build nahi karenge.
-         */
-        if (sendingRef.current) {
-          return;
-        }
-
-        sendingRef.current = true;
-
-        setLastLocation(location);
-
-        const payload = {
-
-          latitude:
-            location.coords.latitude,
-
-          longitude:
-            location.coords.longitude,
-
-          speed:
-            location.coords.speed != null
-            && location.coords.speed >= 0
-              ? location.coords.speed
-              : null,
-
-          heading:
-            location.coords.heading != null
-            && location.coords.heading >= 0
-              ? location.coords.heading
-              : null,
-
-          accuracy:
-            location.coords.accuracy ?? null,
-        };
-
-        try {
-
-          /*
-           * First preference:
-           *
-           * Existing WebSocket connection.
-           */
-          const sentOverWebSocket =
-            stompClient.publish(
-              trackingDestinations
-                .driverLocationPush(
-                  tripId
-                ),
-              payload
-            );
-
-          if (sentOverWebSocket) {
-
-            if (!cancelled) {
-
-              setLastSentAt(
-                new Date()
-              );
-
-              setLastTransport(
-                "ws"
-              );
-
-              setLastError(null);
-            }
-
-            return;
-          }
-
-          /*
-           * Henglish:
-           *
-           * Socket currently connected nahi hai.
-           * REST reliable fallback use karenge.
-           */
-          await driverApi.updateLocation(
-            tripId,
-            payload
-          );
-
-          if (!cancelled) {
-
-            setLastSentAt(
-              new Date()
-            );
-
-            setLastTransport(
-              "rest"
-            );
-
-            setLastError(null);
-          }
-
-        } catch (error) {
-
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to send GPS location";
-
-          if (!cancelled) {
-
-            setLastError(
-              message
-            );
-          }
-
-          console.error(
-            "[DriverGPS] Location send failed:",
-            error
-          );
-
-        } finally {
-
-          sendingRef.current = false;
-        }
-      };
+      } finally {
+        restInFlight.current = false;
+      }
+    };
 
     const start = async () => {
-
-        const { status } = await Location.getForegroundPermissionsAsync();
-
-        if (status !== "granted") {
-
-          if (!cancelled) {
-
-            setLastError(
-              "Location permission is required."
-            );
-          }
-
-          return;
-        }
-
-        const subscription =
-          await Location
-            .watchPositionAsync(
-              LOCATION_OPTIONS,
-              location => {
-
-                sendLocation(
-                  location
-                );
-              }
-            );
-
-        if (cancelled) {
-
-          subscription.remove();
-
-          return;
-        }
-
-        watchSubscriptionRef.current =
-          subscription;
-
-        setIsBroadcasting(
-          true
-        );
-      };
-
-    start().catch(error => {
-
-      if (!cancelled) {
-
-        setLastError(
-          error instanceof Error
-            ? error.message
-            : "Unable to start GPS tracking"
-        );
+      setPhase("starting");
+      const result = await toPermission(false);
+      if (cancelled) return;
+      setPermission(result);
+      if (result !== "granted") {
+        setPhase("permission-needed");
+        return;
       }
+
+      const subscription = await Location.watchPositionAsync(WATCH_OPTIONS, (loc) => {
+        void send(loc);
+      });
+      if (cancelled) {
+        subscription.remove();
+        return;
+      }
+      watcher = subscription;
+      setPhase("sharing");
+
+      keepAlive = setInterval(async () => {
+        if (Date.now() - lastFixAt.current < KEEP_ALIVE_MS) return;
+        try {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          void send(loc);
+        } catch {
+          /* transient GPS failure: next tick tries again */
+        }
+      }, KEEP_ALIVE_MS / 2);
+
+      ackWatchdog = setInterval(() => {
+        const since = pendingAckSince.current;
+        setUnconfirmed(since !== null && Date.now() - since > ACK_TIMEOUT_MS);
+      }, 3_000);
+    };
+
+    start().catch((error) => {
+      if (cancelled) return;
+      setPhase("error");
+      setProblem(getApiErrorMessage(error, "Unable to start GPS sharing."));
     });
 
     return () => {
-
       cancelled = true;
-
-      unsubscribeError();
-
-      watchSubscriptionRef
-        .current
-        ?.remove();
-
-      watchSubscriptionRef.current =
-        null;
-
-      setIsBroadcasting(false);
+      watcher?.remove();
+      if (keepAlive) clearInterval(keepAlive);
+      if (ackWatchdog) clearInterval(ackWatchdog);
+      offAck();
+      offError();
+      releaseSocket();
+      pendingAckSince.current = null;
     };
-
-  }, [tripId, enabled]);
+  }, [enabled, tripId, permissionTick]);
 
   return {
-
-    isBroadcasting,
-
+    phase,
+    permission,
+    connection,
+    isForeground,
+    lastFix,
     lastSentAt,
-
+    lastConfirmedAt,
     lastTransport,
-
-    lastError,
-
-    lastLocation,
+    unconfirmed,
+    problem,
+    requestPermission,
   };
 }
