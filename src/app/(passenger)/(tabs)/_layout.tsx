@@ -68,15 +68,6 @@ export default function PassengerTabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="Test"
-        options={{
-          title: "Test",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
-        }}
-      />
     </Tabs>
   );
 }

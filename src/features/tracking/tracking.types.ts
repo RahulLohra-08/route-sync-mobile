@@ -1,3 +1,4 @@
+// src/features/tracking/tracking.types.ts
 export interface TripLocationWebSocketMessage {
   tripId: string;
   busId: string;
