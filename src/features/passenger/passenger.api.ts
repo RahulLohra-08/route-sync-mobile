@@ -28,6 +28,9 @@ export const passengerApi = {
   getRouteStops: async (routeId: string) =>
     (await apiClient.get<StopResponse[]>(`/api/v1/routes/${routeId}/stops/active`)).data,
 
+  /** GET /api/v1/buses - active buses (PASSENGER, DRIVER, ADMIN). */
+  getBuses: async () =>
+    (await apiClient.get<BusResponse[]>('/api/v1/buses')).data,
   getBusById: async (busId: string) =>
     (await apiClient.get<BusResponse>(`/api/v1/buses/${busId}`)).data,
 };

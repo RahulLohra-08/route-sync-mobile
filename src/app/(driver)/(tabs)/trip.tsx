@@ -6,16 +6,11 @@ import { DriverTripCard } from "@/features/driver/components/DriverTripCard";
 import { GpsStatusCard } from "@/features/driver/components/GpsStatusCard";
 import { passengerApi } from "@/features/passenger/passenger.api";
 import type { StopResponse } from "@/features/passenger/passenger.types";
+import { RouteStops } from "@/features/routes/RouteStops";
 import { useNow } from "@/hooks/useNow";
 import { colors, radius, spacing } from "@/theme";
 import { useEffect, useState } from "react";
-import {
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Platform, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 /** Active (or next) trip in detail: GPS health, own position, route stops, queue. */
@@ -133,18 +128,7 @@ export default function DriverTrip() {
                 No stops published for this route.
               </AppText>
             ) : (
-              stops.map((st) => (
-                <View key={st.id} style={styles.stop}>
-                  <View style={styles.dot}>
-                    <AppText variant="caption" style={styles.dotText}>
-                      {st.stopOrder}
-                    </AppText>
-                  </View>
-                  <AppText variant="bodyMedium" style={{ flex: 1 }}>
-                    {st.stopName}
-                  </AppText>
-                </View>
-              ))
+              <RouteStops stops={stops} tripRunning={!!s.activeTrip} />
             )}
 
             {others.length > 0 && (

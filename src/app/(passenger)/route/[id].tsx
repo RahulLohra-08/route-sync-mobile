@@ -10,6 +10,7 @@ import type {
   StopResponse,
   TripResponse,
 } from "@/features/passenger/passenger.types";
+import { RouteStops } from "@/features/routes/RouteStops";
 import { getApiErrorMessage } from "@/services/api/api-client";
 import { colors, radius, spacing } from "@/theme";
 import { formatDuration } from "@/utils/date";
@@ -85,23 +86,7 @@ export default function RouteDetail() {
               No stops published for this route yet.
             </AppText>
           ) : (
-            stops.map((s) => (
-              <View key={s.id} style={styles.stop}>
-                <View style={styles.dot}>
-                  <AppText variant="caption" style={styles.dotText}>
-                    {s.stopOrder}
-                  </AppText>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodyMedium">{s.stopName}</AppText>
-                  {s.address ? (
-                    <AppText variant="caption" style={styles.muted}>
-                      {s.address}
-                    </AppText>
-                  ) : null}
-                </View>
-              </View>
-            ))
+            <RouteStops stops={stops} />
           )}
 
           <AppText variant="h3">Available trips</AppText>

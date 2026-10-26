@@ -6,6 +6,7 @@
 //    button appears. We never fight a user who is exploring.
 //  * Marker colour mirrors data freshness (green live / amber stale).
 //  * Honors the OS "reduce motion" setting.
+import type { StopResponse } from "@/features/passenger/passenger.types";
 import { colors, radius } from "@/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { type ComponentProps, useEffect, useRef, useState } from "react";
@@ -25,6 +26,9 @@ interface Props {
   health: TrackingHealth;
   following: boolean;
   onFollowingChange: (following: boolean) => void;
+  /** Route stops (real lat/lng from the backend). Plain pins, no invented route line. */
+  stops?: StopResponse[] | null;
+  selectedStopId?: string | null;
   /** Height covered by the bottom sheet, so the map re-centres above it. */
   bottomInset?: number;
 }
@@ -46,6 +50,8 @@ export function LiveBusMap({
   health,
   following,
   onFollowingChange,
+  stops,
+  selectedStopId,
   bottomInset = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
@@ -101,6 +107,20 @@ export function LiveBusMap({
     }
   }, [fix?.latitude, fix?.longitude, following, reduceMotion, animated]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Picking a stop: show bus + that stop together (stop following so the
+  // camera doesn't snap back on the next GPS frame).
+  useEffect(() => {
+    const stop = stops?.find((s) => s.id === selectedStopId);
+    if (!stop) return;
+    onFollowingChange(false);
+    const coords = [{ latitude: stop.latitude, longitude: stop.longitude }];
+    if (fix) coords.push({ latitude: fix.latitude, longitude: fix.longitude });
+    mapRef.current?.fitToCoordinates(coords, {
+      edgePadding: { top: 140, right: 60, bottom: bottomInset + 60, left: 60 },
+      animated: !reduceMotion,
+    });
+  }, [selectedStopId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const markerColor = stale ? "#F59E0B" : colors.map.bus;
   // Typing bridge: AnimatedRegion is the documented value for Marker.Animated,
   // but the library's d.ts expects a plain LatLng-shaped object.
@@ -146,6 +166,17 @@ export function LiveBusMap({
               }
             />
           )}
+        {stops?.map((stop) => (
+          <Marker
+            key={stop.id}
+            coordinate={{ latitude: stop.latitude, longitude: stop.longitude }}
+            title={`${stop.stopOrder}. ${stop.stopName}`}
+            pinColor={
+              stop.id === selectedStopId ? colors.primary[700] : "#94A3B8"
+            }
+            zIndex={stop.id === selectedStopId ? 2 : 1}
+          />
+        ))}
         {fix && (
           <Marker.Animated
             coordinate={animatedCoordinate}

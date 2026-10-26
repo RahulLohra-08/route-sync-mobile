@@ -1,35 +1,30 @@
-import AnimatedButton from "@/components/common/AnimatedButton";
-import { logout } from "@/services/auth/logout.service";
-import { router } from "expo-router";
-import React from "react";
-import { StyleSheet, View } from "react-native";
+import { useDriverSession } from "@/features/driver/DriverSessionProvider";
+import { ProfileScreen } from "@/features/profile/ProfileScreen";
 
-const profile = () => {
-  async function handleLogout() {
-    try {
-      await logout();
-
-      router.replace("/(auth)/login");
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  }
-
+/** Driver profile = shared profile + the vehicle/route from the real assigned trip. */
+export default function DriverProfile() {
+  const { activeTrip, nextTrip } = useDriverSession();
+  const trip = activeTrip ?? nextTrip;
   return (
-    <View style={styles.container}>
-      <AnimatedButton title="Logout" onPress={handleLogout} />
-    </View>
+    <ProfileScreen
+      role="DRIVER"
+      extraTitle="Current assignment"
+      extraRows={
+        trip
+          ? [
+              {
+                icon: "bus-outline",
+                label: "Bus",
+                value: `${trip.busNumber} (${trip.registrationNumber})`,
+              },
+              {
+                icon: "map-outline",
+                label: "Route",
+                value: `${trip.routeCode} · ${trip.routeName}`,
+              },
+            ]
+          : [{ icon: "bus-outline", label: "Bus", value: "None assigned" }]
+      }
+    />
   );
-};
-
-export default profile;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f0f0f0",
-    padding: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});
+}

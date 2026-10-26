@@ -9,11 +9,12 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { ConnectionBanner } from "@/components/tracking/ConnectionBanner";
 import { TrackingStatusPill } from "@/components/tracking/TrackingStatusPill";
 import { passengerApi } from "@/features/passenger/passenger.api";
-import type { TripResponse } from "@/features/passenger/passenger.types";
+import type { StopResponse, TripResponse } from "@/features/passenger/passenger.types";
+import { useRouteStops } from "@/features/routes/useRouteStops";
 import { colors, radius, spacing } from "@/theme";
 import { formatTime } from "@/utils/date";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -22,11 +23,11 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HEALTH_META } from "../../tracking/health-meta";
-import { useTripTracking } from "../../tracking/hooks/useTripTracking";
-import { formatAgo, parseServerTime } from "../../tracking/tracking.logic";
+import { HEALTH_META } from "../health-meta";
+import { useTripTracking } from "../hooks/useTripTracking";
+import { formatAgo, parseServerTime } from "../tracking.logic";
 import { LiveBusMap } from "./LiveBusMap";
-import { TripEtaPanel } from "./TripEtaPanel";
+import { TripStopsPanel } from "./TripStopsPanel";
 
 interface Props {
   tripId: string;
@@ -43,6 +44,9 @@ export function TripTrackingView({ tripId, onBack }: Props) {
   const [following, setFollowing] = useState(true);
   const [sheetHeight, setSheetHeight] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const stopsOffset = useRef(0); // Y of the stops block inside the sheet
 
   // Trip details (route name, driver, schedule) - one-off, not live data.
   useEffect(() => {
@@ -69,6 +73,10 @@ export function TripTrackingView({ tripId, onBack }: Props) {
   const routeCode =
     snapshot?.routeCode ?? trip?.routeCode ?? fix?.routeCode ?? "";
   const recordedMs = parseServerTime(fix?.recordedAt);
+  const routeId = snapshot?.routeId ?? trip?.routeId;
+  const { stops, failed: stopsFailed } = useRouteStops(routeId);
+  const selectStop = (stop: StopResponse) =>
+    setSelectedStopId((cur) => (cur === stop.id ? null : stop.id));
   const bannerMessage =
     connection === "error" || connection === "disconnected" ? error : null;
 
@@ -79,6 +87,8 @@ export function TripTrackingView({ tripId, onBack }: Props) {
         health={health}
         following={following}
         onFollowingChange={setFollowing}
+        stops={stops}
+        selectedStopId={selectedStopId}
         bottomInset={sheetHeight}
       />
 
@@ -122,6 +132,7 @@ export function TripTrackingView({ tripId, onBack }: Props) {
       >
         <View style={styles.grabber} />
         <ScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.sheetContent}
         >
@@ -191,11 +202,25 @@ export function TripTrackingView({ tripId, onBack }: Props) {
                 </View>
               )}
 
-              <TripEtaPanel
-                tripId={tripId}
-                routeId={snapshot?.routeId ?? trip?.routeId}
-                enabled={running}
-              />
+              <View
+                onLayout={(e) => (stopsOffset.current = e.nativeEvent.layout.y)}
+              >
+                <TripStopsPanel
+                  tripId={tripId}
+                  stops={stops}
+                  stopsFailed={stopsFailed}
+                  selectedStopId={selectedStopId}
+                  onSelect={selectStop}
+                  running={running}
+                  // Smoothly bring the chosen stop into view inside the sheet.
+                  onSelectedLayout={(y) =>
+                    scrollRef.current?.scrollTo({
+                      y: stopsOffset.current + y - 40,
+                      animated: true,
+                    })
+                  }
+                />
+              </View>
 
               {!running &&
                 status &&

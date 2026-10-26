@@ -30,11 +30,21 @@ export default function PassengerTabsLayout() {
       />
 
       <Tabs.Screen
+        name="buses"
+        options={{
+          title: "Buses",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="bus-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="trips"
         options={{
           title: "Trips",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bus-outline" size={size} color={color} />
+            <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
@@ -45,16 +55,6 @@ export default function PassengerTabsLayout() {
           title: "Track",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="location-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: "Alerts",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" size={size} color={color} />
           ),
         }}
       />
