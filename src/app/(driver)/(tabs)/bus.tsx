@@ -7,9 +7,14 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { useDriverSession } from "@/features/driver/DriverSessionProvider";
 import { passengerApi } from "@/features/passenger/passenger.api";
 import type { BusResponse } from "@/features/passenger/passenger.types";
+import { useDriverProfile } from "@/features/profile/useDriverProfile";
+import { parseServerTime } from "@/features/tracking/tracking.logic";
+import { useAppSelector } from "@/store/hooks";
 import { colors, radius, spacing } from "@/theme";
+import { formatTime } from "@/utils/date";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 
 const pretty = (v?: string | null) =>
@@ -19,15 +24,20 @@ const pretty = (v?: string | null) =>
         .toLowerCase()
         .replace(/^\w/, (c) => c.toUpperCase())
     : null;
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /**
- * There is no "my bus" endpoint, so the assigned vehicle is the bus on the
- * driver's active (else next) trip; vehicle details: GET /api/v1/buses/{id}
- * (allowed for DRIVER, read-only). No bus-management actions here.
+ * No "my bus" endpoint exists, so the vehicle = bus on the active (else next)
+ * trip; details from GET /api/v1/buses/{id} (read-only). Live readouts use
+ * real values only: GPS fix speed, trip occupancy, driver duty status.
+ * (No SOS/incident endpoint exists on the backend, so no SOS button.)
  */
 export default function DriverBus() {
   const s = useDriverSession();
   const router = useRouter();
+  const userId = useAppSelector((st) => st.auth.user?.id);
+  const duty = useDriverProfile(userId, true);
   const trip = s.activeTrip ?? s.nextTrip;
   const [bus, setBus] = useState<BusResponse | null>(null);
   const [failed, setFailed] = useState(false);
@@ -48,7 +58,26 @@ export default function DriverBus() {
     };
   }, [trip?.busId]);
 
-  const rows: [string, string | null][] = bus
+  const today = useMemo(() => {
+    const day = localDay(new Date());
+    return s.trips
+      .filter((t) => t.scheduledStartTime?.startsWith(day))
+      .sort(
+        (a, b) =>
+          (parseServerTime(a.scheduledStartTime) ?? 0) -
+          (parseServerTime(b.scheduledStartTime) ?? 0),
+      );
+  }, [s.trips]);
+
+  const running = !!s.activeTrip;
+  const speedMs = s.gps.lastFix?.coords.speed;
+  const speed =
+    running && speedMs != null && speedMs >= 0
+      ? `${Math.round(speedMs * 3.6)} km/h`
+      : "--";
+  const online = s.gps.connection === "connected";
+
+  const details: [string, string | null][] = bus
     ? [
         ["Registration", bus.registrationNumber],
         ["Type", pretty(bus.busType)],
@@ -69,7 +98,13 @@ export default function DriverBus() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={s.refreshing} onRefresh={s.refresh} />
+          <RefreshControl
+            refreshing={s.refreshing}
+            onRefresh={async () => {
+              await s.refresh();
+              await duty.reload();
+            }}
+          />
         }
       >
         <AppText variant="h1">My bus</AppText>
@@ -84,13 +119,68 @@ export default function DriverBus() {
         ) : (
           <>
             <View style={styles.hero}>
-              <AppText variant="h1" style={styles.heroNum}>
-                {trip.busNumber}
-              </AppText>
-              <AppText variant="caption" style={styles.heroSub}>
-                {trip.registrationNumber}
-              </AppText>
+              <View style={{ flex: 1 }}>
+                <AppText variant="h1" style={{ color: "#FFF" }}>
+                  {trip.busNumber}
+                </AppText>
+                <AppText variant="caption" style={{ color: "#CBD5E1" }}>
+                  {trip.registrationNumber}
+                </AppText>
+              </View>
+              <View
+                style={[
+                  styles.online,
+                  {
+                    backgroundColor: running
+                      ? online
+                        ? "#D1FAE5"
+                        : "#FEF3C7"
+                      : "#334155",
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.dot,
+                    {
+                      backgroundColor: running
+                        ? online
+                          ? "#047857"
+                          : "#B45309"
+                        : "#94A3B8",
+                    },
+                  ]}
+                />
+                <AppText
+                  variant="caption"
+                  style={{
+                    color: running
+                      ? online
+                        ? "#047857"
+                        : "#B45309"
+                      : "#CBD5E1",
+                    fontWeight: "700",
+                  }}
+                >
+                  {running ? (online ? "Online" : "Connection issue") : "Idle"}
+                </AppText>
+              </View>
             </View>
+
+            <View style={styles.stats}>
+              <Stat icon="speedometer-outline" label="Speed" value={speed} />
+              <Stat
+                icon="people-outline"
+                label="Seats taken"
+                value={`${trip.currentOccupancy}/${trip.totalSeats}`}
+              />
+              <Stat
+                icon="pulse-outline"
+                label="Duty"
+                value={pretty(duty.driver?.status) ?? "--"}
+              />
+            </View>
+
             <View style={styles.card}>
               <View style={styles.row}>
                 <AppText variant="bodyMedium" style={{ flex: 1 }}>
@@ -98,14 +188,42 @@ export default function DriverBus() {
                 </AppText>
                 <StatusBadge status={trip.status} />
               </View>
-              <AppText variant="caption" style={styles.muted}>
-                Trip ID {trip.id.slice(0, 8)}
-              </AppText>
               <AnimatedButton
-                title={s.activeTrip ? "Continue active trip" : "Open trip"}
+                title={running ? "Continue active trip" : "Open trip"}
                 onPress={() => router.push("/(driver)/(tabs)/trip")}
               />
             </View>
+
+            <AppText variant="h3">Today's trips</AppText>
+            {today.length === 0 ? (
+              <AppText variant="caption" style={styles.muted}>
+                No trips scheduled for today.
+              </AppText>
+            ) : (
+              <View style={styles.card}>
+                {today.map((t, i) => {
+                  const ms = parseServerTime(t.scheduledStartTime);
+                  return (
+                    <View
+                      key={t.id}
+                      style={[styles.row, i > 0 && styles.rowBorder]}
+                    >
+                      <AppText variant="bodyMedium" style={{ width: 70 }}>
+                        {ms === null ? "--" : formatTime(new Date(ms))}
+                      </AppText>
+                      <AppText
+                        variant="caption"
+                        style={[styles.muted, { flex: 1 }]}
+                        numberOfLines={1}
+                      >
+                        {t.routeCode} · {t.routeName}
+                      </AppText>
+                      <StatusBadge status={t.status} />
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             <AppText variant="h3">Vehicle details</AppText>
             {failed ? (
@@ -116,10 +234,13 @@ export default function DriverBus() {
               <Skeleton height={140} radius={16} />
             ) : (
               <View style={styles.card}>
-                {rows
+                {details
                   .filter(([, v]) => v)
-                  .map(([k, v]) => (
-                    <View key={k} style={styles.row}>
+                  .map(([k, v], i) => (
+                    <View
+                      key={k}
+                      style={[styles.row, i > 0 && styles.rowBorder]}
+                    >
                       <AppText variant="caption" style={styles.muted}>
                         {k}
                       </AppText>
@@ -137,16 +258,58 @@ export default function DriverBus() {
   );
 }
 
+function Stat({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  value: string;
+}) {
+  return (
+    <View
+      style={styles.stat}
+      accessible
+      accessibilityLabel={`${label}: ${value}`}
+    >
+      <Ionicons name={icon} size={20} color={colors.primary[700]} />
+      <AppText variant="bodyMedium">{value}</AppText>
+      <AppText variant="caption" style={styles.muted}>
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingBottom: spacing.xxxl },
   hero: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: spacing.xl,
     borderRadius: radius.xl,
     backgroundColor: "#0F172A",
-    gap: 2,
+    gap: spacing.md,
   },
-  heroNum: { color: "#FFFFFF" },
-  heroSub: { color: "#CBD5E1" },
+  online: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  stats: { flexDirection: "row", gap: spacing.sm },
+  stat: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.background.secondary,
+  },
   card: {
     padding: spacing.lg,
     borderRadius: radius.xl,
@@ -160,6 +323,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
+  },
+  rowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border.light,
+    paddingTop: spacing.md,
   },
   muted: { color: "#64748B" },
   value: {

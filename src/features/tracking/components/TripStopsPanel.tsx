@@ -4,8 +4,6 @@
 //   GET /api/v1/passenger/trips/{tripId}/eta?stopId=...  -> TripEtaResponse
 // If the backend can't estimate it says why; we show that and no number.
 // Nothing is computed on the phone. (Stops themselves come from the parent.)
-import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
 import AppText from "@/components/common/AppText";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import type { StopResponse } from "@/features/passenger/passenger.types";
@@ -13,6 +11,9 @@ import { RouteStops } from "@/features/routes/RouteStops";
 import { getApiErrorMessage } from "@/services/api/api-client";
 import { colors, radius, spacing } from "@/theme";
 import { formatTime } from "@/utils/date";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { parseServerTime } from "../tracking.logic";
 import { getTripEta } from "../tracking.service";
 import type { TripEta } from "../tracking.types";
@@ -29,6 +30,9 @@ interface Props {
   /** Trip is IN_PROGRESS: ETA endpoint is only meaningful then. */
   running: boolean;
   onSelectedLayout?: (y: number) => void;
+  busPosition?: { latitude: number; longitude: number } | null;
+  myStopId?: string | null;
+  onToggleMyStop?: (stop: StopResponse) => void;
 }
 
 const methodLabel = (m: string) =>
@@ -38,7 +42,18 @@ const methodLabel = (m: string) =>
       ? "Approximate: straight-line distance and current speed"
       : "";
 
-export function TripStopsPanel({ tripId, stops, stopsFailed, selectedStopId, onSelect, running, onSelectedLayout }: Props) {
+export function TripStopsPanel({
+  tripId,
+  stops,
+  stopsFailed,
+  selectedStopId,
+  onSelect,
+  running,
+  onSelectedLayout,
+  busPosition,
+  myStopId,
+  onToggleMyStop,
+}: Props) {
   const [eta, setEta] = useState<TripEta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,37 +96,64 @@ export function TripStopsPanel({ tripId, stops, stopsFailed, selectedStopId, onS
     );
   }
 
-  const minutes = eta?.etaMinutes != null ? Math.max(1, Math.round(eta.etaMinutes)) : null;
+  const minutes =
+    eta?.etaMinutes != null ? Math.max(1, Math.round(eta.etaMinutes)) : null;
   const arrivalMs = parseServerTime(eta?.estimatedArrivalAt);
 
   let detail: React.ReactNode = null;
   if (!running) {
-    detail = <AppText variant="caption" style={styles.muted}>Live arrival appears once the trip starts.</AppText>;
+    detail = (
+      <AppText variant="caption" style={styles.muted}>
+        Live arrival appears once the trip starts.
+      </AppText>
+    );
   } else if (loading && !eta) {
     detail = <Skeleton height={36} radius={radius.md} />;
   } else if (error) {
-    detail = <AppText variant="caption" style={styles.error}>{error}</AppText>;
+    detail = (
+      <AppText variant="caption" style={styles.error}>
+        {error}
+      </AppText>
+    );
   } else if (eta && minutes !== null) {
     detail = (
       <View accessible accessibilityLabel={`About ${minutes} minutes`}>
         <View style={styles.etaRow}>
-          <AppText variant="h2" style={styles.big}>~{minutes} min</AppText>
-          {arrivalMs !== null && <AppText variant="caption" style={styles.muted}>around {formatTime(new Date(arrivalMs))}</AppText>}
+          {/* key => the number cross-fades (150 ms) whenever the estimate changes */}
+          <Animated.View key={minutes} entering={FadeIn.duration(150)}>
+            <AppText variant="h2" style={styles.big}>
+              ~{minutes} min
+            </AppText>
+          </Animated.View>
+          {arrivalMs !== null && (
+            <AppText variant="caption" style={styles.muted}>
+              around {formatTime(new Date(arrivalMs))}
+            </AppText>
+          )}
         </View>
         <AppText variant="caption" style={styles.muted}>
-          {eta.distanceKm != null ? `${eta.distanceKm.toFixed(1)} km away · ` : ""}{methodLabel(eta.calculationMethod)}
+          {eta.distanceKm != null
+            ? `${eta.distanceKm.toFixed(1)} km away · `
+            : ""}
+          {methodLabel(eta.calculationMethod)}
         </AppText>
       </View>
     );
   } else if (eta) {
     // Backend declined to estimate: show ITS reason, never an invented time.
-    detail = <AppText variant="caption" style={styles.warn}>Arrival time unavailable. {eta.message ?? ""}</AppText>;
+    detail = (
+      <AppText variant="caption" style={styles.warn}>
+        Arrival time unavailable. {eta.message ?? ""}
+      </AppText>
+    );
   }
 
   return (
     <View style={styles.wrap}>
       <AppText variant="bodyMedium">Route stops</AppText>
-      <AppText variant="caption" style={styles.muted}>Tap a stop to see its arrival estimate.</AppText>
+      <AppText variant="caption" style={styles.muted}>
+        Tap a stop to see its arrival estimate.
+      </AppText>
       <RouteStops
         stops={stops}
         selectedStopId={selectedStopId}
@@ -119,6 +161,9 @@ export function TripStopsPanel({ tripId, stops, stopsFailed, selectedStopId, onS
         selectedDetail={detail}
         tripRunning={running}
         onSelectedLayout={onSelectedLayout}
+        busPosition={busPosition}
+        myStopId={myStopId}
+        onToggleMyStop={onToggleMyStop}
       />
     </View>
   );

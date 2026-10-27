@@ -9,7 +9,11 @@ import { Skeleton } from "@/components/feedback/Skeleton";
 import { ConnectionBanner } from "@/components/tracking/ConnectionBanner";
 import { TrackingStatusPill } from "@/components/tracking/TrackingStatusPill";
 import { passengerApi } from "@/features/passenger/passenger.api";
-import type { StopResponse, TripResponse } from "@/features/passenger/passenger.types";
+import type {
+  StopResponse,
+  TripResponse,
+} from "@/features/passenger/passenger.types";
+import { useMyStop } from "@/features/routes/useMyStop";
 import { useRouteStops } from "@/features/routes/useRouteStops";
 import { colors, radius, spacing } from "@/theme";
 import { formatTime } from "@/utils/date";
@@ -75,6 +79,18 @@ export function TripTrackingView({ tripId, onBack }: Props) {
   const recordedMs = parseServerTime(fix?.recordedAt);
   const routeId = snapshot?.routeId ?? trip?.routeId;
   const { stops, failed: stopsFailed } = useRouteStops(routeId);
+  const myStop = useMyStop(routeId);
+  // Open straight onto the passenger's saved stop (once), so the ETA to THEIR
+  // stop is the first thing they see. Never overrides a manual choice.
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (autoSelected.current || !myStop.ready || !stops || !myStop.myStopId)
+      return;
+    if (stops.some((s) => s.id === myStop.myStopId)) {
+      autoSelected.current = true;
+      setSelectedStopId((cur) => cur ?? myStop.myStopId);
+    }
+  }, [myStop.ready, myStop.myStopId, stops]);
   const selectStop = (stop: StopResponse) =>
     setSelectedStopId((cur) => (cur === stop.id ? null : stop.id));
   const bannerMessage =
@@ -212,6 +228,9 @@ export function TripTrackingView({ tripId, onBack }: Props) {
                   selectedStopId={selectedStopId}
                   onSelect={selectStop}
                   running={running}
+                  busPosition={fix}
+                  myStopId={myStop.myStopId}
+                  onToggleMyStop={(stop) => void myStop.toggle(stop.id)}
                   // Smoothly bring the chosen stop into view inside the sheet.
                   onSelectedLayout={(y) =>
                     scrollRef.current?.scrollTo({
